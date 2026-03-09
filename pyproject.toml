@@ -2,19 +2,26 @@
 name = "pytest-reporter-html"
 version = "1.0.0"
 description = "Pytest plugin that generates rich HTML test reports with step tracking, log capture, and interactive filtering"
+readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
+authors = [
+    {name = "Yevgeny Farber"},
+]
 keywords = ["pytest", "reporter", "html", "test-reporting", "test-report"]
 classifiers = [
     "Framework :: Pytest",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
     "Topic :: Software Development :: Testing",
 ]
-dependencies = [
-    "boto3>=1.42.63",
-]
+dependencies = []
 
 [project.optional-dependencies]
 s3 = ["boto3>=1.28"]
@@ -29,8 +36,10 @@ asyncio_mode = "auto"
 report_mode = "all"
 
 [project.urls]
-Homepage = "https://github.com/yevgenyfarber/pytest-reporter-html"
-Documentation = "https://github.com/yevgenyfarber/pytest-reporter-html"
+Homepage = "https://github.com/YevgenyFarber/pytest-reporter-html"
+Documentation = "https://github.com/YevgenyFarber/pytest-reporter-html"
+Source = "https://github.com/YevgenyFarber/pytest-reporter-html"
+Issues = "https://github.com/YevgenyFarber/pytest-reporter-html/issues"
 
 [project.entry-points.pytest11]
 reporter_html = "pytest_reporter_html.plugin"

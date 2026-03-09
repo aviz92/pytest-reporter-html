@@ -1,5 +1,10 @@
 # pytest-reporter-html
 
+[![PyPI version](https://img.shields.io/pypi/v/pytest-reporter-html)](https://pypi.org/project/pytest-reporter-html/)
+[![PyPI downloads](https://img.shields.io/pypi/dm/pytest-reporter-html)](https://pypistats.org/packages/pytest-reporter-html)
+[![Python versions](https://img.shields.io/pypi/pyversions/pytest-reporter-html)](https://pypi.org/project/pytest-reporter-html/)
+[![License](https://img.shields.io/pypi/l/pytest-reporter-html)](https://github.com/YevgenyFarber/pytest-reporter-html/blob/main/LICENSE)
+
 A pytest plugin that automatically generates rich, interactive HTML test reports with **log capture**, **step tracking**, **exception rendering**, and **real-time filtering**.
 
 Install it, configure a capture mode, run `pytest`, get a report.
@@ -19,10 +24,6 @@ pip install pytest-reporter-html[s3]
 ```
 
 ## Quick Start
-
-```bash
-pip install pytest-reporter-html
-```
 
 Enable a capture mode in `pyproject.toml`:
 

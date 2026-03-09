@@ -14,20 +14,18 @@ from __future__ import annotations
 
 import os
 import traceback
-from typing import Optional
 
 import pytest
 
-from .logger import ReportLogger
+from .logger import ReportLogger, _NoOpReportLogger
 from .logging_bridge import ReportLoggingHandler, attach_logging_bridge, detach_logging_bridge
 from .reporter import TestReporter
-from .step import _active_reporter, step
+from .step import _active_reporter, _set_steps_enabled, step
 
 
 # ---------------------------------------------------------------------------
 # Configuration
 # ---------------------------------------------------------------------------
-
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
@@ -39,7 +37,17 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         default=False,
         help="Disable HTML report generation",
     )
+    group.addoption(
+        "--disable-reporter",
+        action="store_true",
+        default=False,
+        help="Completely disable the reporter (no JSON/HTML output)",
+    )
 
+    parser.addini("report_enabled", default=True, type="bool",
+                  help="Master switch to enable/disable the reporter")
+    parser.addini("report_mode", default="",
+                  help="Capture mode: auto, step, manual, all (comma-separated for combos; empty = disabled)")
     parser.addini("report_dir", default="build/test-reports",
                   help="Output directory for JSON and HTML reports")
     parser.addini("report_title", default="Test Report",
@@ -47,7 +55,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addini("report_log_level", default="DEBUG",
                   help="Minimum log level to capture (TRACE/DEBUG/INFO/WARN/ERROR)")
     parser.addini("report_auto_log", default=True, type="bool",
-                  help="Auto-capture Python logging into report events")
+                  help="Auto-capture Python logging into report events (legacy; prefer report_mode)")
     parser.addini("report_html", default=True, type="bool",
                   help="Generate aggregated HTML report")
     parser.addini("report_exclude_loggers", default="",
@@ -56,6 +64,10 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 class _ReportConfig:
     """Resolved configuration values, set once in pytest_configure."""
+    enabled: bool = True
+    mode_auto: bool = False
+    mode_step: bool = False
+    mode_manual: bool = False
     output_dir: str = "build/test-reports"
     title: str = "Test Report"
     log_level: str = "DEBUG"
@@ -68,16 +80,33 @@ class _ReportConfig:
 _cfg = _ReportConfig()
 
 
+def _parse_modes(mode_str: str) -> tuple[bool, bool, bool]:
+    """Return (auto, step, manual) flags from a mode string."""
+    modes = {m.strip().lower() for m in mode_str.split(",") if m.strip()}
+    if not modes:
+        return False, False, False
+    if "all" in modes:
+        return True, True, True
+    return "auto" in modes, "step" in modes, "manual" in modes
+
+
 def pytest_configure(config: pytest.Config) -> None:
     """Register marker and resolve configuration."""
     config.addinivalue_line(
         "markers", "report: mark test for HTML reporting"
     )
 
+    _cfg.enabled = config.getini("report_enabled")
+    if config.getoption("--disable-reporter", default=False):
+        _cfg.enabled = False
+
+    mode_str = config.getini("report_mode") or ""
+    _cfg.mode_auto, _cfg.mode_step, _cfg.mode_manual = _parse_modes(mode_str)
+
     _cfg.output_dir = config.getini("report_dir") or "build/test-reports"
     _cfg.title = config.getini("report_title") or "Test Report"
     _cfg.log_level = (config.getini("report_log_level") or "DEBUG").upper()
-    _cfg.auto_log = config.getini("report_auto_log")
+    _cfg.auto_log = _cfg.mode_auto and config.getini("report_auto_log")
     _cfg.generate_html = config.getini("report_html")
     _cfg.exclude_loggers = [
         s.strip()
@@ -85,6 +114,8 @@ def pytest_configure(config: pytest.Config) -> None:
         if s.strip()
     ]
     _cfg.no_html_cli = config.getoption("--no-report-html", default=False)
+
+    _set_steps_enabled(_cfg.enabled and _cfg.mode_step)
 
 
 # ---------------------------------------------------------------------------
@@ -96,6 +127,8 @@ _all_test_methods: list[str] = []
 
 def pytest_collection_modifyitems(items: list[pytest.Item]) -> None:
     """Collect all test function names for the ``AllTestMethods`` field."""
+    if not _cfg.enabled:
+        return
     global _all_test_methods
     _all_test_methods = [item.name for item in items]
 
@@ -124,6 +157,9 @@ def _module_label(item: pytest.Item) -> str:
 @pytest.hookimpl(tryfirst=True)
 def pytest_runtest_setup(item: pytest.Item) -> None:
     """Create a TestReporter before each test and open a Setup step."""
+    if not _cfg.enabled:
+        return
+
     test_name = item.name
     class_name = _module_label(item)
 
@@ -151,6 +187,8 @@ def pytest_runtest_setup(item: pytest.Item) -> None:
 @pytest.hookimpl(tryfirst=True)
 def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
     """Capture test outcome per phase and manage phase steps."""
+    if not _cfg.enabled:
+        return
     reporter = _reporters.get(item.nodeid)
     if reporter is None:
         return
@@ -207,6 +245,8 @@ _phase_failures: dict[str, tuple[str, str]] = {}
 @pytest.hookimpl(tryfirst=True)
 def pytest_runtest_teardown(item: pytest.Item) -> None:
     """Open a Teardown phase step."""
+    if not _cfg.enabled:
+        return
     reporter = _reporters.get(item.nodeid)
     if reporter is None:
         return
@@ -220,12 +260,18 @@ def pytest_runtest_teardown(item: pytest.Item) -> None:
 # ---------------------------------------------------------------------------
 
 def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:
-    output_dir = _cfg.output_dir
+    if not _cfg.enabled:
+        return
 
-    if _cfg.generate_html and not _cfg.no_html_cli:
+    output_dir = session.config.getini("report_dir") or _cfg.output_dir
+    title = session.config.getini("report_title") or _cfg.title
+    generate_html = session.config.getini("report_html")
+    no_html_cli = session.config.getoption("--no-report-html", default=False)
+
+    if generate_html and not no_html_cli:
         from .html_report import generate_report
 
-        report_path = generate_report(output_dir, title=_cfg.title)
+        report_path = generate_report(output_dir, title=title)
         if report_path:
             abs_path = os.path.abspath(report_path)
             print(f"\n{'=' * 80}")
@@ -256,9 +302,11 @@ def report_log(request: pytest.FixtureRequest) -> ReportLogger:
         def test_example(report_log):
             report_log.info("hello")
     """
+    if not _cfg.enabled or not _cfg.mode_manual:
+        return _NoOpReportLogger()
+
     reporter = _reporters.get(request.node.nodeid)
     if reporter is None:
-        # Fallback: create a dummy reporter so tests don't crash
         reporter = TestReporter(
             test_name=request.node.name,
             class_name=request.node.cls.__name__ if request.node.cls else None,
@@ -282,6 +330,8 @@ def report_test_name(request: pytest.FixtureRequest):
             report_test_name(test_case.name)
     """
     def _set(name: str) -> None:
+        if not _cfg.enabled:
+            return
         reporter = _reporters.get(request.node.nodeid)
         if reporter is not None:
             reporter.test_name = name

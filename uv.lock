@@ -141,6 +141,9 @@ wheels = [
 name = "pytest-reporter-html"
 version = "1.0.0"
 source = { editable = "." }
+dependencies = [
+    { name = "boto3" },
+]
 
 [package.optional-dependencies]
 dev = [
@@ -153,6 +156,7 @@ s3 = [
 
 [package.metadata]
 requires-dist = [
+    { name = "boto3", specifier = ">=1.42.63" },
     { name = "boto3", marker = "extra == 's3'", specifier = ">=1.28" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=7.0" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },

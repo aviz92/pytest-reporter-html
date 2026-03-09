@@ -34,8 +34,18 @@ _active_reporter: ContextVar[Optional[TestReporter]] = ContextVar(
 )
 
 
+_steps_enabled: bool = True
+
+
+def _set_steps_enabled(enabled: bool) -> None:
+    global _steps_enabled
+    _steps_enabled = enabled
+
+
 def _get_reporter() -> Optional[TestReporter]:
-    """Return the active TestReporter, or None."""
+    """Return the active TestReporter, or None if absent or steps disabled."""
+    if not _steps_enabled:
+        return None
     return _active_reporter.get()
 
 

@@ -1,0 +1,16 @@
+{
+  "steps": [
+    {
+      "startTime": 1773065272238,
+      "endTime": 1773065272257,
+      "name": "test_no_report_html_flag",
+      "status": "PASSED",
+      "events": []
+    }
+  ],
+  "AllTestMethods": [
+    "test_pass"
+  ],
+  "testStatus": "PASSED",
+  "className": "TestPluginConfig"
+}

@@ -15,7 +15,7 @@ import json
 import os
 import re
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
@@ -133,7 +133,7 @@ def generate_report(report_directory: str, *, title: str = "Test Report") -> Opt
 
         html = _generate_html(test_results, grouped, timestamp, is_ci, title=title)
 
-        # Write timestamped report
+        # Write a timestamped report
         ts_file = report_dir / f"TestReport_All_{timestamp}.html"
         ts_file.write_text(html, encoding="utf-8")
 
@@ -229,7 +229,7 @@ def _parse_test_result(filename: str, root: dict) -> TestResult:
 
         result.steps.append(ts)
 
-    # Override failure info from root level if present
+    # Override failure info from the root level if present
     if root.get("failureMessage"):
         result.failureMessage = root["failureMessage"]
     if root.get("stackTrace"):
@@ -324,7 +324,7 @@ def _parse_previous_run_tests(run: RunInfo) -> list[TestResult]:
             tr = TestResult()
             tr.methodName = m.group(2)
             start = m.start()
-            before = content[max(0, start - 500) : start]
+            before = content[max(0, start - 500): start]
             cm = re.search(r"<h2 class='class-name'>(.*?)</h2>", before, re.DOTALL)
             if cm:
                 tr.className = cm.group(1).strip()
@@ -425,10 +425,10 @@ def _format_json_for_display(json_str: str) -> str:
 
     def _replace_key(m: re.Match) -> str:
         nonlocal counter
-        ph = f"___JSON_KEY_PLACEHOLDER_{counter}___"
+        placeholder = f"___JSON_KEY_PLACEHOLDER_{counter}___"
         counter += 1
-        placeholders[ph] = f"<span class='json-key'>{m.group(1)}</span>"
-        return ph
+        placeholders[placeholder] = f"<span class='json-key'>{m.group(1)}</span>"
+        return placeholder
 
     escaped = re.sub(r'("(?:[^"\\]|\\.)+"\s*:)', _replace_key, escaped)
 
@@ -483,7 +483,7 @@ def _format_event_with_json(event_text: str) -> str:
     if "[ ]" in event_text:
         return f"<span class='event-text'>{_escape_html(event_text)}</span>"
 
-    # Try whole message as JSON
+    # Try the whole message as JSON
     pretty = _try_pretty_json(event_text)
     if pretty is not None:
         fmt = _format_json_for_display(pretty)
@@ -596,18 +596,10 @@ def _extract_curl_from_json(json_str: str) -> Optional[str]:
 def _render_http_request_with_curl(
     json_str: str, curl_cmd: str, unique_id: str,
 ) -> str:
-    h: list[str] = []
-    h.append("<div class='http-event http-request'>\n")
-    h.append("<div class='http-header'>\n")
-    h.append("<span class='http-icon'>&#127760;</span>\n")
-    h.append("<strong>HTTP Request</strong>\n")
-    h.append("</div>\n")
+    h: list[str] = ["<div class='http-event http-request'>\n", "<div class='http-header'>\n", "<span class='http-icon'>&#127760;</span>\n", "<strong>HTTP Request</strong>\n", "</div>\n",
+                    "<div class='json-container' style='margin-top: 12px;'>\n", "<div class='json-header'>\n", "<span class='json-label'>Request Details</span>\n",
+                    f"<button class='copy-btn' onclick='copyToClipboard(\"{unique_id}\")' title='Copy JSON'>&#128203;</button>\n", "</div>\n"]
     # JSON
-    h.append("<div class='json-container' style='margin-top: 12px;'>\n")
-    h.append("<div class='json-header'>\n")
-    h.append("<span class='json-label'>Request Details</span>\n")
-    h.append(f"<button class='copy-btn' onclick='copyToClipboard(\"{unique_id}\")' title='Copy JSON'>&#128203;</button>\n")
-    h.append("</div>\n")
     data_orig = _escape_html(json_str).replace("'", "&#39;")
     h.append(f"<pre class='event-json' id='json-{unique_id}' data-original='{data_orig}'>{_format_json_for_display(json_str)}</pre>\n")
     h.append("</div>\n")
@@ -625,7 +617,7 @@ def _render_http_request_with_curl(
     return "".join(h)
 
 
-def _render_http_event(event_text: str, unique_id: str) -> str:
+def _render_http_event(event_text: str) -> str:
     h: list[str] = []
     if "HTTP Request:" in event_text:
         h.append("<div class='http-event http-request'>\n")
@@ -656,15 +648,9 @@ def _render_event_with_traceback(event_text: str, uid: str) -> str:
     message = event_text[:pos]
     traceback_text = event_text[pos + 1:]  # skip the leading newline
 
-    h: list[str] = []
-    h.append(f"<span class='event-text'>{_escape_html(message)}</span>\n")
-    h.append("<div class='event-stacktrace-section'>\n")
-    h.append(f"<div class='event-stacktrace-toggle' onclick='toggleEventStackTrace(\"{uid}\")'>\n")
-    h.append(f"<span class='event-stacktrace-icon open' id='event-stacktrace-icon-{uid}'>&#9654;</span>\n")
-    h.append("<strong>Exception</strong>\n")
-    h.append("</div>\n")
-    h.append(f"<pre class='event-stacktrace-content' id='event-stacktrace-{uid}' style='display: block;'>{_escape_html(traceback_text)}</pre>\n")
-    h.append("</div>\n")
+    h: list[str] = [f"<span class='event-text'>{_escape_html(message)}</span>\n", "<div class='event-stacktrace-section'>\n", f"<div class='event-stacktrace-toggle' onclick='toggleEventStackTrace(\"{uid}\")'>\n",
+                    f"<span class='event-stacktrace-icon open' id='event-stacktrace-icon-{uid}'>&#9654;</span>\n", "<strong>Exception</strong>\n", "</div>\n",
+                    f"<pre class='event-stacktrace-content' id='event-stacktrace-{uid}' style='display: block;'>{_escape_html(traceback_text)}</pre>\n", "</div>\n"]
     return "".join(h)
 
 
@@ -675,15 +661,8 @@ def _render_test(result: TestResult, index: int) -> str:
 
     total_events = sum(len(s.events) for s in result.steps)
 
-    h: list[str] = []
-    h.append(f"<div class='test-item {status_class}' data-status='{result.status}'>\n")
-    h.append(f"<div class='test-header' onclick='toggleTest({index})'>\n")
-    h.append(f"{status_icon}\n")
-    h.append("<div class='test-name-container'>\n")
-    h.append(f"<span class='test-name'>{_escape_html(result.testName)}</span>\n")
-    h.append(f"<span class='test-method-name'>{_escape_html(result.methodName)}</span>\n")
-    h.append("</div>\n")
-    h.append("<span class='test-meta'>\n")
+    h: list[str] = [f"<div class='test-item {status_class}' data-status='{result.status}'>\n", f"<div class='test-header' onclick='toggleTest({index})'>\n", f"{status_icon}\n", "<div class='test-name-container'>\n",
+                    f"<span class='test-name'>{_escape_html(result.testName)}</span>\n", f"<span class='test-method-name'>{_escape_html(result.methodName)}</span>\n", "</div>\n", "<span class='test-meta'>\n"]
     dur = result.duration / 1000
     h.append(f"<span class='meta-item meta-duration'>{dur:.2f}s</span>\n")
     if total_events > 0:
@@ -770,7 +749,7 @@ def _render_test(result: TestResult, index: int) -> str:
                     h.append(f"<pre class='event-json' id='json-{uid}' data-original='{data_orig}'>{display_j}</pre>\n")
                     h.append("</div>\n")
             elif "HTTP Request:" in ev.event or "HTTP Response:" in ev.event:
-                h.append(_render_http_event(ev.event, uid))
+                h.append(_render_http_event(ev.event))
             elif ev.event.startswith("Stack Trace:"):
                 st_content = ev.event[len("Stack Trace:"):].strip()
                 h.append("<div class='event-stacktrace-section'>\n")
@@ -815,19 +794,10 @@ def _generate_html(
 
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    h: list[str] = []
-    h.append("<!DOCTYPE html>\n<html lang='en'>\n<head>\n")
-    h.append("<meta charset='UTF-8'>\n")
-    h.append("<meta name='viewport' content='width=device-width, initial-scale=1.0'>\n")
-    h.append(f"<title>{_escape_html(title)}</title>\n")
-    h.append("<style>\n")
-    h.append(_get_css(is_ci))
-    h.append("</style>\n")
-    h.append("</head>\n<body>\n")
+    h: list[str] = ["<!DOCTYPE html>\n<html lang='en'>\n<head>\n", "<meta charset='UTF-8'>\n", "<meta name='viewport' content='width=device-width, initial-scale=1.0'>\n", f"<title>{_escape_html(title)}</title>\n", "<style>\n",
+                    _get_css(), "</style>\n", "</head>\n<body>\n", "<header class='header'>\n", "<div class='header-top'>\n"]
 
     # Header
-    h.append("<header class='header'>\n")
-    h.append("<div class='header-top'>\n")
     if is_ci:
         h.append("<a href='TestReport_Latest.html' class='back-link'>&larr; All Runs</a>\n")
     h.append(f"<h1>{_escape_html(title)}</h1>\n")
@@ -922,22 +892,8 @@ def _generate_html(
 def _generate_index_page(runs: list[RunInfo], current_timestamp: str) -> str:
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    h: list[str] = []
-    h.append("<!DOCTYPE html>\n<html>\n<head>\n")
-    h.append("<meta charset='UTF-8'>\n")
-    h.append("<title>Test Reports - All Runs</title>\n")
-    h.append("<style>\n")
-    h.append(_get_index_css())
-    h.append("</style>\n")
-    h.append("</head>\n<body>\n")
-
-    h.append("<div class='header'>\n")
-    h.append("<h1>&#128202; Test Execution Reports - All Runs</h1>\n")
-    h.append(f"<div class='timestamp'>Generated: {now_str}</div>\n")
-    h.append("</div>\n")
-
-    h.append("<div class='runs-container'>\n")
-    h.append("<h2>Available Test Runs</h2>\n")
+    h: list[str] = ["<!DOCTYPE html>\n<html>\n<head>\n", "<meta charset='UTF-8'>\n", "<title>Test Reports - All Runs</title>\n", "<style>\n", _get_index_css(), "</style>\n", "</head>\n<body>\n", "<div class='header'>\n",
+                    "<h1>&#128202; Test Execution Reports - All Runs</h1>\n", f"<div class='timestamp'>Generated: {now_str}</div>\n", "</div>\n", "<div class='runs-container'>\n", "<h2>Available Test Runs</h2>\n"]
 
     if not runs:
         h.append("<div class='no-runs'>No test runs found.</div>\n")
@@ -974,7 +930,7 @@ def _generate_index_page(runs: list[RunInfo], current_timestamp: str) -> str:
 # CSS (identical to JUnit reporter's AggregatedReportGenerator.getCSS)
 # ---------------------------------------------------------------------------
 
-def _get_css(is_ci: bool) -> str:
+def _get_css() -> str:
     mono = "'SF Mono','Monaco','Inconsolata','Roboto Mono','Courier New',monospace"
     return f"""\
 :root {{

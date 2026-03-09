@@ -1,7 +1,7 @@
 """
 JSON report builder for a single test.
 
-One ``TestReporter`` instance is created per test by the plugin.
+The plugin creates one ''TestReporter'' instance per test.
 It accumulates steps and events, then writes the final JSON file.
 """
 from __future__ import annotations
@@ -47,7 +47,7 @@ class TestReporter:
     def _resolve_timestamp() -> str:
         """
         Use ``REPORT_TIMESTAMP`` env var if set (CI mode),
-        otherwise fall back to current epoch millis.
+        otherwise fall back to the current epoch millis.
         """
         ts = os.environ.get("REPORT_TIMESTAMP")
         if ts and ts.strip():
@@ -142,7 +142,7 @@ class TestReporter:
         stack_trace: Optional[str] = None,
     ) -> Optional[str]:
         """
-        Close any open step, set final status, write JSON file.
+        Close any open step, set a final status, write a JSON file.
         Returns the file path written, or ``None`` on error.
         """
         # Close any dangling step
@@ -153,7 +153,7 @@ class TestReporter:
         self._report.failureMessage = failure_message
         self._report.stackTrace = stack_trace
 
-        # Build external report link if S3 is configured
+        # Build an external report link if S3 is configured
         link = self._build_external_link()
         if link:
             self._report.externalTestReportLink = link

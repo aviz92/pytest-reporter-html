@@ -173,7 +173,7 @@ class TestParseTestResult:
         data = {"testStatus": "PASSED", "steps": []}
         result = _parse_test_result("empty.json", data)
         assert result.filename == "empty.json", f"filename should be 'empty.json', got {result.filename!r}"
-        assert result.steps == [], "Steps should be empty list"
+        assert not result.steps, "Steps should be empty list"
 
     def test_parses_http_request_count(self) -> None:
         data = {
@@ -220,7 +220,7 @@ class TestFindAllRuns:
 
     def test_empty_dir_returns_no_runs(self, tmp_path: Path) -> None:
         runs = _find_all_runs(tmp_path)
-        assert runs == [], f"Expected empty list, got {runs}"
+        assert not runs, f"Expected empty list, got {runs}"
 
 
 class TestCalculateTryNumbers:

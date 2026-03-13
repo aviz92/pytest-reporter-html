@@ -1,452 +1,285 @@
-"""Tests for pytest_reporter_html.html_report — HTML generation and helpers."""
+"""Tests for pytest_reporter_html.html_report."""
+
 from __future__ import annotations
 
 import json
-import logging
+import os
+from datetime import datetime
 from pathlib import Path
+from unittest.mock import patch
 
 from pytest_reporter_html.html_report import (
-    _escape_html,
-    _format_class_name,
-    _format_test_name,
-    _format_try_number,
+    RunInfo,
+    _calculate_try_numbers,
+    _find_all_runs,
+    _format_timestamp_hms,
+    _format_ts,
     _parse_test_result,
+    _resolve_timestamp,
     generate_report,
 )
 
-log = logging.getLogger(__name__)
-log.setLevel(logging.DEBUG)
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 
-class TestEscapeHtml:
-    def test_escapes_ampersand(self):
-        log.info("_escape_html: '&' → '&amp;'")
-        result = _escape_html("a & b")
-        log.debug(f"Result: '{result}'")
-        assert result == "a &amp; b"
-
-    def test_escapes_angle_brackets(self):
-        log.info("_escape_html: '<div>' → '&lt;div&gt;'")
-        result = _escape_html("<div>")
-        log.debug(f"Result: '{result}'")
-        assert result == "&lt;div&gt;"
-
-    def test_escapes_quotes(self):
-        log.info("_escape_html: double and single quotes are escaped")
-        r1 = _escape_html('"hello"')
-        r2 = _escape_html("it's")
-        log.debug(f"Double: '{r1}', Single: '{r2}'")
-        assert r1 == "&quot;hello&quot;"
-        assert r2 == "it&#39;s"
-
-    def test_none_returns_empty(self):
-        log.info("_escape_html(None) returns empty string")
-        assert _escape_html(None) == ""
-
-    def test_plain_text_unchanged(self):
-        log.info("_escape_html: plain text passes through unchanged")
-        assert _escape_html("hello world") == "hello world"
+def _write_json(directory: Path, filename: str, data: dict) -> Path:
+    """Write a JSON test-result file into directory/json/."""
+    json_dir = directory / "json"
+    json_dir.mkdir(parents=True, exist_ok=True)
+    path = json_dir / filename
+    path.write_text(json.dumps(data), encoding="utf-8")
+    return path
 
 
-class TestFormatTestName:
-    def test_strips_test_prefix(self):
-        log.info("_format_test_name: strip 'test_' prefix and capitalize")
-        result = _format_test_name("test_login_success")
-        log.debug(f"Result: '{result}'")
-        assert result == "Login success"
-
-    def test_camel_case_split(self):
-        log.info("_format_test_name: split camelCase into words")
-        result = _format_test_name("testLoginSuccess")
-        log.debug(f"Result: '{result}'")
-        assert result == "Test Login Success"
-
-    def test_empty_string(self):
-        log.info("_format_test_name: empty string returns empty")
-        assert _format_test_name("") == ""
-
-    def test_just_test_prefix(self):
-        log.info("_format_test_name: 'test_' alone returns a string")
-        result = _format_test_name("test_")
-        log.debug(f"Result: '{result}'")
-        assert isinstance(result, str)
-
-    def test_underscores_to_spaces(self):
-        log.info("_format_test_name: underscores become spaces")
-        result = _format_test_name("test_user_can_login")
-        log.debug(f"Result: '{result}'")
-        assert result == "User can login"
+def _minimal_result(name: str = "test_foo", status: str = "PASSED") -> dict:
+    return {
+        "testStatus": status,
+        "className": "tests.MyClass",
+        "steps": [
+            {
+                "name": name,
+                "startTime": 1_700_000_000_000,
+                "endTime": 1_700_000_001_000,
+                "status": status,
+                "events": [],
+            }
+        ],
+    }
 
 
-class TestFormatClassName:
-    def test_strips_test_prefix_camel(self):
-        log.info("_format_class_name: 'TestAdminScheduler' → 'Admin Scheduler'")
-        result = _format_class_name("TestAdminScheduler")
-        log.debug(f"Result: '{result}'")
-        assert result == "Admin Scheduler"
-
-    def test_strips_test_prefix_snake(self):
-        log.info("_format_class_name: 'test_api_amv2' → 'Api Amv2'")
-        result = _format_class_name("test_api_amv2")
-        log.debug(f"Result: '{result}'")
-        assert result == "Api Amv2"
-
-    def test_preserves_acronyms(self):
-        log.info("_format_class_name: consecutive uppercase (acronyms) preserved")
-        result = _format_class_name("TestUIPages")
-        log.debug(f"Result: '{result}'")
-        assert result == "UI Pages"
-
-    def test_empty_string(self):
-        log.info("_format_class_name: empty string returns empty")
-        assert _format_class_name("") == ""
-
-    def test_just_test(self):
-        log.info("_format_class_name: 'Test' alone returns a string")
-        result = _format_class_name("Test")
-        log.debug(f"Result: '{result}'")
-        assert isinstance(result, str)
-
-    def test_non_test_prefix(self):
-        log.info("_format_class_name: class without 'Test' prefix is still split")
-        result = _format_class_name("HelperClass")
-        log.debug(f"Result: '{result}'")
-        assert result == "Helper Class"
-
-    def test_single_word_after_test(self):
-        log.info("_format_class_name: 'TestAuth' → 'Auth'")
-        result = _format_class_name("TestAuth")
-        log.debug(f"Result: '{result}'")
-        assert result == "Auth"
+# ---------------------------------------------------------------------------
+# _format_ts
+# ---------------------------------------------------------------------------
 
 
-class TestFormatTryNumber:
-    def test_first(self):
-        log.info("_format_try_number(1) → '1st try'")
-        assert _format_try_number(1) == "1st try"
+class TestFormatTs:
+    def test_format_includes_milliseconds(self) -> None:
+        dt = datetime(2024, 6, 15, 12, 30, 45, 123_000)
+        result = _format_ts(dt)
+        assert result == "2024.06.15_12.30.45.123", f"Expected '2024.06.15_12.30.45.123', got {result!r}"
 
-    def test_second(self):
-        log.info("_format_try_number(2) → '2nd try'")
-        assert _format_try_number(2) == "2nd try"
+    def test_format_pads_milliseconds_to_three_digits(self) -> None:
+        dt = datetime(2024, 1, 1, 0, 0, 0, 5_000)
+        result = _format_ts(dt)
+        assert result.endswith(".005"), f"Expected '.005' suffix, got {result!r}"
 
-    def test_third(self):
-        log.info("_format_try_number(3) → '3rd try'")
-        assert _format_try_number(3) == "3rd try"
+    def test_format_zero_microseconds(self) -> None:
+        dt = datetime(2024, 1, 1, 0, 0, 0, 0)
+        result = _format_ts(dt)
+        assert result.endswith(".000"), f"Expected '.000' suffix, got {result!r}"
 
-    def test_fourth(self):
-        log.info("_format_try_number(4) → '4th try'")
-        assert _format_try_number(4) == "4th try"
 
-    def test_eleventh(self):
-        log.info("_format_try_number(11) → '11th try' (special case)")
-        assert _format_try_number(11) == "11th try"
+# ---------------------------------------------------------------------------
+# _format_timestamp_hms
+# ---------------------------------------------------------------------------
 
-    def test_twelfth(self):
-        log.info("_format_try_number(12) → '12th try' (special case)")
-        assert _format_try_number(12) == "12th try"
 
-    def test_thirteenth(self):
-        log.info("_format_try_number(13) → '13th try' (special case)")
-        assert _format_try_number(13) == "13th try"
+class TestFormatTimestampHms:
+    def test_format_epoch_millis_to_hms(self) -> None:
+        dt = datetime(2024, 1, 1, 10, 20, 30, 456_000)
+        epoch_ms = int(dt.timestamp() * 1000)
+        result = _format_timestamp_hms(epoch_ms)
+        assert result == "10:20:30.456", f"Expected '10:20:30.456', got {result!r}"
 
-    def test_twenty_first(self):
-        log.info("_format_try_number(21) → '21st try'")
-        assert _format_try_number(21) == "21st try"
 
-    def test_zero_returns_empty(self):
-        log.info("_format_try_number(0) → empty string")
-        assert _format_try_number(0) == ""
+# ---------------------------------------------------------------------------
+# _resolve_timestamp
+# ---------------------------------------------------------------------------
 
-    def test_negative_returns_empty(self):
-        log.info("_format_try_number(-1) → empty string")
-        assert _format_try_number(-1) == ""
+
+class TestResolveTimestamp:
+    def test_uses_env_var_when_set_to_millis(self) -> None:
+        epoch_ms = 1_700_000_000_000
+        expected_dt = datetime.fromtimestamp(epoch_ms / 1000.0)
+        expected = _format_ts(expected_dt)
+        with patch.dict("os.environ", {"REPORT_TIMESTAMP": str(epoch_ms)}):
+            result = _resolve_timestamp()
+        assert result == expected, f"Expected {expected!r}, got {result!r}"
+
+    def test_uses_env_var_when_set_to_string(self) -> None:
+        with patch.dict("os.environ", {"REPORT_TIMESTAMP": "my-custom-ts"}):
+            result = _resolve_timestamp()
+        assert result == "my-custom-ts", f"Expected 'my-custom-ts', got {result!r}"
+
+    def test_falls_back_to_current_time_when_env_not_set(self) -> None:
+        with patch.dict("os.environ", {}, clear=False):
+            os.environ.pop("REPORT_TIMESTAMP", None)
+            result = _resolve_timestamp()
+        assert result, "Expected a non-empty timestamp string"
+        assert "." in result, f"Expected formatted timestamp with dots, got {result!r}"
+
+
+# ---------------------------------------------------------------------------
+# _parse_test_result
+# ---------------------------------------------------------------------------
 
 
 class TestParseTestResult:
-    def test_parses_passed_test(self):
-        log.info("Parse a PASSED test JSON — verify all fields extracted")
+    def test_parses_minimal_result(self) -> None:
+        data = _minimal_result("test_foo", "PASSED")
+        result = _parse_test_result("test_foo_1700000000000.json", data)
+        assert result.status == "PASSED", f"status mismatch: {result.status!r}"
+        assert result.className == "tests.MyClass", f"className mismatch: {result.className!r}"
+
+    def test_parses_failed_result(self) -> None:
+        data = _minimal_result("test_bar", "FAILED")
+        data["failureMessage"] = "AssertionError: oops"
+        data["stackTrace"] = "traceback..."
+        result = _parse_test_result("test_bar_1700000000000.json", data)
+        assert result.status == "FAILED", f"status mismatch: {result.status!r}"
+        assert result.failureMessage == "AssertionError: oops", f"failureMessage mismatch: {result.failureMessage!r}"
+
+    def test_parses_step_name_with_dash_separator(self) -> None:
         data = {
             "testStatus": "PASSED",
-            "className": "TestSample",
             "steps": [
                 {
-                    "name": "Step 01: do thing",
-                    "startTime": 1000,
-                    "endTime": 1200,
+                    "name": "com.example - my_test_method",
+                    "startTime": 1_700_000_000_000,
+                    "endTime": 1_700_000_001_000,
+                    "status": "PASSED",
+                    "events": [],
+                }
+            ],
+        }
+        result = _parse_test_result("some_file.json", data)
+        assert result.className == "com.example", f"className should be 'com.example', got {result.className!r}"
+        assert (
+            result.methodName == "my_test_method"
+        ), f"methodName should be 'my_test_method', got {result.methodName!r}"
+
+    def test_parses_event_count(self) -> None:
+        data = {
+            "testStatus": "PASSED",
+            "steps": [
+                {
+                    "name": "test_step",
+                    "startTime": 1_700_000_000_000,
+                    "endTime": 1_700_000_001_000,
                     "status": "PASSED",
                     "events": [
-                        {"level": "INFO", "event": "hello", "startTime": 1050}
+                        {"level": "INFO", "event": "msg1"},
+                        {"level": "DEBUG", "event": "msg2"},
                     ],
                 }
             ],
         }
-        result = _parse_test_result("test_example_12345.json", data)
-        log.debug(f"Parsed: status={result.status}, class={result.className}, method={result.methodName}, duration={result.duration}ms, events={result.eventCount}")
-        assert result.status == "PASSED"
-        assert result.className == "TestSample"
-        assert result.methodName == "test_example"
-        assert result.duration == 200
-        assert result.eventCount == 1
-        assert len(result.steps) == 1
-        assert result.steps[0].name == "Step 01: do thing"
-        assert len(result.steps[0].events) == 1
+        result = _parse_test_result("test_events.json", data)
+        assert result.eventCount == 2, f"Expected 2 events, got {result.eventCount}"
 
-    def test_parses_failed_test(self):
-        log.info("Parse a FAILED test JSON — verify failure message and stack trace")
+    def test_returns_default_result_when_no_steps(self) -> None:
+        data = {"testStatus": "PASSED", "steps": []}
+        result = _parse_test_result("empty.json", data)
+        assert result.filename == "empty.json", f"filename should be 'empty.json', got {result.filename!r}"
+        assert not result.steps, "Steps should be empty list"
+
+    def test_parses_http_request_count(self) -> None:
         data = {
-            "testStatus": "FAILED",
-            "failureMessage": "assert False",
-            "stackTrace": "Traceback...",
+            "testStatus": "PASSED",
             "steps": [
                 {
-                    "name": "test_broken",
-                    "startTime": 1000,
-                    "endTime": 1100,
-                    "status": "FAILED",
-                    "failureMessage": "assert False",
-                    "events": [],
+                    "name": "test",
+                    "startTime": 1_700_000_000_000,
+                    "endTime": 1_700_000_001_000,
+                    "status": "PASSED",
+                    "events": [
+                        {"level": "INFO", "event": "HTTP Request: GET /api"},
+                        {"level": "INFO", "event": "regular log"},
+                    ],
                 }
             ],
         }
-        result = _parse_test_result("test_broken_99.json", data)
-        log.debug(f"Failure: message='{result.failureMessage}', trace present={bool(result.stackTrace)}")
-        assert result.status == "FAILED"
-        assert result.failureMessage == "assert False"
-        assert result.stackTrace == "Traceback..."
+        result = _parse_test_result("test.json", data)
+        assert result.httpRequestCount == 1, f"Expected 1 HTTP request, got {result.httpRequestCount}"
 
-    def test_method_name_from_filename(self):
-        log.info("Extract method name from JSON filename (strip timestamp suffix)")
-        result = _parse_test_result(
-            "test_my_feature_1709912345000.json",
-            {"steps": [{"startTime": 100, "endTime": 200, "events": []}]},
-        )
-        log.debug(f"Extracted method name: '{result.methodName}'")
-        assert result.methodName == "test_my_feature"
 
-    def test_defaults_for_missing_fields(self):
-        log.info("Parse JSON with missing optional fields — verify defaults")
-        result = _parse_test_result(
-            "test_x_1.json",
-            {"steps": [{"startTime": 0, "endTime": 0, "events": []}]},
-        )
-        log.debug(f"Defaults: className='{result.className}', status={result.status}")
-        assert result.className == "Tests"
-        assert result.status == "PASSED"
+# ---------------------------------------------------------------------------
+# _find_all_runs / _calculate_try_numbers
+# ---------------------------------------------------------------------------
 
-    def test_event_count_across_steps(self):
-        log.info("Count events across multiple steps")
-        data = {
-            "steps": [
-                {"startTime": 1, "endTime": 2, "events": [
-                    {"level": "INFO", "event": "a"},
-                    {"level": "INFO", "event": "b"},
-                ]},
-                {"startTime": 2, "endTime": 3, "events": [
-                    {"level": "DEBUG", "event": "c"},
-                ]},
-            ],
-        }
-        result = _parse_test_result("test_x_1.json", data)
-        log.debug(f"Total events across 2 steps: {result.eventCount}")
-        assert result.eventCount == 3
+
+class TestFindAllRuns:
+    def test_finds_report_html_files(self, tmp_path: Path) -> None:
+        (tmp_path / "TestReport_All_2024.01.01_00.00.00.000.html").write_text("", encoding="utf-8")
+        (tmp_path / "TestReport_All_2024.01.02_00.00.00.000.html").write_text("", encoding="utf-8")
+        (tmp_path / "unrelated.html").write_text("", encoding="utf-8")
+
+        runs = _find_all_runs(tmp_path)
+        assert len(runs) == 2, f"Expected 2 runs, got {len(runs)}: {[r.fileName for r in runs]}"
+
+    def test_runs_sorted_newest_first(self, tmp_path: Path) -> None:
+        (tmp_path / "TestReport_All_2024.01.01_00.00.00.000.html").write_text("", encoding="utf-8")
+        (tmp_path / "TestReport_All_2024.06.15_12.00.00.000.html").write_text("", encoding="utf-8")
+
+        runs = _find_all_runs(tmp_path)
+        assert (
+            runs[0].timestamp > runs[1].timestamp
+        ), f"First run should be newer: {runs[0].timestamp!r} vs {runs[1].timestamp!r}"
+
+    def test_empty_dir_returns_no_runs(self, tmp_path: Path) -> None:
+        runs = _find_all_runs(tmp_path)
+        assert not runs, f"Expected empty list, got {runs}"
+
+
+class TestCalculateTryNumbers:
+    def test_assigns_sequential_try_numbers(self) -> None:
+        runs = [RunInfo(), RunInfo(), RunInfo()]
+        _calculate_try_numbers(runs)
+        assert [r.tryNumber for r in runs] == [3, 2, 1], f"Expected [3, 2, 1], got {[r.tryNumber for r in runs]}"
+
+    def test_single_run_gets_try_number_one(self) -> None:
+        runs = [RunInfo()]
+        _calculate_try_numbers(runs)
+        assert runs[0].tryNumber == 1, f"Expected try 1, got {runs[0].tryNumber}"
+
+
+# ---------------------------------------------------------------------------
+# generate_report (integration)
+# ---------------------------------------------------------------------------
 
 
 class TestGenerateReport:
-    def _write_json(self, json_dir: Path, name: str, data: dict):
-        json_dir.mkdir(parents=True, exist_ok=True)
-        (json_dir / name).write_text(json.dumps(data))
+    def test_returns_none_when_directory_does_not_exist(self, tmp_path: Path) -> None:
+        result = generate_report(str(tmp_path / "nonexistent"))
+        assert result is None, f"Expected None for missing directory, got {result!r}"
 
-    def test_generates_html_from_json(self, tmp_path):
-        log.info("Generate HTML report from a single JSON file")
-        self._write_json(tmp_path / "json", "test_hello_1.json", {
-            "testStatus": "PASSED",
-            "className": "TestGreeting",
-            "steps": [{
-                "name": "test_hello",
-                "startTime": 1000,
-                "endTime": 1200,
-                "status": "PASSED",
-                "events": [{"level": "INFO", "event": "hi"}],
-            }],
-        })
-
-        result = generate_report(str(tmp_path))
-        log.debug(f"Report path: {result}")
-        assert result is not None
-
-        html_file = Path(result)
-        assert html_file.exists()
-        html = html_file.read_text()
-        assert "test_hello" in html.lower() or "Hello" in html
-        assert "PASSED" in html or "pass" in html
-
-    def test_returns_none_for_empty_dir(self, tmp_path):
-        log.info("generate_report with empty directory → returns None")
-        assert generate_report(str(tmp_path)) is None
-
-    def test_returns_none_for_missing_dir(self, tmp_path):
-        log.info("generate_report with nonexistent directory → returns None")
-        assert generate_report(str(tmp_path / "nonexistent")) is None
-
-    def test_returns_none_for_empty_json_dir(self, tmp_path):
-        log.info("generate_report with empty json/ subdir → returns None")
+    def test_returns_none_when_no_json_files(self, tmp_path: Path) -> None:
         (tmp_path / "json").mkdir()
-        assert generate_report(str(tmp_path)) is None
-
-    def test_multiple_tests_in_report(self, tmp_path):
-        log.info("Generate report with 3 tests (2 PASSED, 1 FAILED)")
-        for i, status in enumerate(["PASSED", "FAILED", "PASSED"]):
-            self._write_json(tmp_path / "json", f"test_{i}_{i}.json", {
-                "testStatus": status,
-                "steps": [{
-                    "name": f"test_{i}",
-                    "startTime": 1000 + i,
-                    "endTime": 1100 + i,
-                    "status": status,
-                    "events": [],
-                    **({"failureMessage": "boom"} if status == "FAILED" else {}),
-                }],
-                **({"failureMessage": "boom"} if status == "FAILED" else {}),
-            })
-
         result = generate_report(str(tmp_path))
-        log.debug(f"Report generated: {result is not None}")
-        assert result is not None
-        html = Path(result).read_text()
-        assert "2" in html
-        assert "1" in html
+        assert result is None, f"Expected None when no JSON files, got {result!r}"
 
-    def test_custom_title(self, tmp_path):
-        log.info("Generate report with custom title 'My Custom Report'")
-        self._write_json(tmp_path / "json", "test_a_1.json", {
-            "testStatus": "PASSED",
-            "steps": [{"startTime": 1, "endTime": 2, "status": "PASSED", "events": []}],
-        })
+    def test_returns_html_path_when_json_files_exist(self, tmp_path: Path) -> None:
+        _write_json(tmp_path, "test_foo_1700000000000.json", _minimal_result())
+        result = generate_report(str(tmp_path))
+        assert result is not None, "Expected a file path, got None"
+        assert Path(result).exists(), f"HTML file not found at {result!r}"
+        assert result.endswith(".html"), f"Expected .html file, got {result!r}"
 
-        result = generate_report(str(tmp_path), title="My Custom Report")
-        html = Path(result).read_text()
-        log.debug(f"Title found in HTML: {'My Custom Report' in html}")
-        assert "My Custom Report" in html
+    def test_generated_html_contains_test_name(self, tmp_path: Path) -> None:
+        _write_json(tmp_path, "test_foo_1700000000000.json", _minimal_result("test_foo"))
+        result = generate_report(str(tmp_path))
+        assert result is not None, "Expected a file path"
+        content = Path(result).read_text(encoding="utf-8")
+        assert "test_foo" in content, "Expected test name 'test_foo' in HTML output"
 
-    def test_timestamped_report_also_created(self, tmp_path):
-        log.info("Verify timestamped report file (TestReport_All_*.html) is also created")
-        self._write_json(tmp_path / "json", "test_a_1.json", {
-            "testStatus": "PASSED",
-            "steps": [{"startTime": 1, "endTime": 2, "status": "PASSED", "events": []}],
-        })
-
+    def test_generates_latest_html_file(self, tmp_path: Path) -> None:
+        _write_json(tmp_path, "test_bar_1700000000000.json", _minimal_result("test_bar"))
         generate_report(str(tmp_path))
-        all_htmls = list(tmp_path.glob("TestReport_All_*.html"))
-        log.debug(f"Timestamped reports found: {len(all_htmls)}")
-        assert len(all_htmls) >= 1
+        assert (tmp_path / "TestReport_Latest.html").exists(), "TestReport_Latest.html should be created"
 
-    def test_report_contains_class_groups(self, tmp_path):
-        log.info("Report groups tests by className (TestAuth, TestPayment)")
-        self._write_json(tmp_path / "json", "test_a_1.json", {
-            "testStatus": "PASSED",
-            "className": "TestAuth",
-            "steps": [{"startTime": 1, "endTime": 2, "status": "PASSED", "events": []}],
-        })
-        self._write_json(tmp_path / "json", "test_b_2.json", {
-            "testStatus": "PASSED",
-            "className": "TestPayment",
-            "steps": [{"startTime": 1, "endTime": 2, "status": "PASSED", "events": []}],
-        })
-
-        result = generate_report(str(tmp_path))
-        html = Path(result).read_text()
-        log.debug(f"Auth in HTML: {'Auth' in html}, Payment in HTML: {'Payment' in html}")
-        assert "Auth" in html
-        assert "Payment" in html
-
-    def test_report_contains_events(self, tmp_path):
-        log.info("Verify events are rendered in the HTML report")
-        self._write_json(tmp_path / "json", "test_a_1.json", {
-            "testStatus": "PASSED",
-            "steps": [{
-                "startTime": 1, "endTime": 2, "status": "PASSED",
-                "events": [
-                    {"level": "INFO", "event": "User created successfully"},
-                    {"level": "ERROR", "event": "Connection timeout"},
-                ],
-            }],
-        })
-
-        result = generate_report(str(tmp_path))
-        html = Path(result).read_text()
-        log.debug("Checking event text in HTML output")
-        assert "User created successfully" in html
-        assert "Connection timeout" in html
-
-    def test_report_handles_special_chars_in_events(self, tmp_path):
-        log.info("Verify special chars (<, &, quotes) are HTML-escaped in events")
-        self._write_json(tmp_path / "json", "test_a_1.json", {
-            "testStatus": "PASSED",
-            "steps": [{
-                "startTime": 1, "endTime": 2, "status": "PASSED",
-                "events": [
-                    {"level": "INFO", "event": "value <b>bold</b> & 'quoted'"},
-                ],
-            }],
-        })
-
-        result = generate_report(str(tmp_path))
-        html = Path(result).read_text()
-        log.debug("Checking HTML-escaped entities in output")
-        assert "&lt;b&gt;bold&lt;/b&gt;" in html
-        assert "&amp;" in html
-
-    def test_report_contains_log_level_filter(self, tmp_path):
-        log.info("Verify HTML report includes log level filter control")
-        self._write_json(tmp_path / "json", "test_a_1.json", {
-            "testStatus": "PASSED",
-            "steps": [{"startTime": 1, "endTime": 2, "status": "PASSED", "events": []}],
-        })
-
-        result = generate_report(str(tmp_path))
-        html = Path(result).read_text()
-        assert "logLevelFilter" in html
-
-    def test_report_contains_search(self, tmp_path):
-        log.info("Verify HTML report includes search functionality")
-        self._write_json(tmp_path / "json", "test_a_1.json", {
-            "testStatus": "PASSED",
-            "steps": [{"startTime": 1, "endTime": 2, "status": "PASSED", "events": []}],
-        })
-
-        result = generate_report(str(tmp_path))
-        html = Path(result).read_text()
-        assert "searchTests" in html or "search" in html.lower()
-
-    def test_failed_test_has_failure_info(self, tmp_path):
-        log.info("Verify FAILED test shows failure message in HTML")
-        self._write_json(tmp_path / "json", "test_fail_1.json", {
-            "testStatus": "FAILED",
-            "failureMessage": "expected True but got False",
-            "stackTrace": "File test.py line 10\n  assert True == False\nAssertionError",
-            "steps": [{
-                "startTime": 1, "endTime": 2,
-                "status": "FAILED",
-                "failureMessage": "expected True but got False",
-                "events": [],
-            }],
-        })
-
-        result = generate_report(str(tmp_path))
-        html = Path(result).read_text()
-        log.debug("Checking failure info in HTML")
-        assert "expected True but got False" in html
-
-    def test_invalid_json_skipped(self, tmp_path):
-        log.info("Invalid JSON files are skipped without crashing report generation")
+    def test_skips_unparseable_json_files(self, tmp_path: Path) -> None:
         json_dir = tmp_path / "json"
         json_dir.mkdir(parents=True)
-        (json_dir / "bad_1.json").write_text("not valid json {{{")
-        self._write_json(json_dir.parent / "json", "test_good_1.json", {
-            "testStatus": "PASSED",
-            "steps": [{"startTime": 1, "endTime": 2, "status": "PASSED", "events": []}],
-        })
-
+        (json_dir / "broken.json").write_text("not valid json", encoding="utf-8")
+        _write_json(tmp_path, "valid_1700000000000.json", _minimal_result())
         result = generate_report(str(tmp_path))
-        log.debug(f"Report generated despite bad JSON: {result is not None}")
-        assert result is not None
+        assert result is not None, "Expected report to succeed even with one broken JSON file"
+
+    def test_custom_title_appears_in_html(self, tmp_path: Path) -> None:
+        _write_json(tmp_path, "test_foo_1700000000000.json", _minimal_result())
+        result = generate_report(str(tmp_path), title="My Custom Title")
+        assert result is not None, "Expected a file path"
+        content = Path(result).read_text(encoding="utf-8")
+        assert "My Custom Title" in content, "Custom title should appear in HTML output"

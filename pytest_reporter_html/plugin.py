@@ -1,4 +1,5 @@
 """pytest-reporter-html entry-point."""
+
 from __future__ import annotations
 
 import logging
@@ -28,23 +29,22 @@ class _ReportLogHandler(logging.Handler):
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
-            self._reporter.add_event(ReportEvent(
-                startTime=_now_millis(),
-                level=record.levelname,
-                event=self.format(record),
-                sourceFileName=record.filename,
-                sourceLineNumber=record.lineno,
-            ))
+            self._reporter.add_event(
+                ReportEvent(
+                    startTime=_now_millis(),
+                    level=record.levelname,
+                    event=self.format(record),
+                    sourceFileName=record.filename,
+                    sourceLineNumber=record.lineno,
+                )
+            )
         except Exception:
             self.handleError(record)
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addoption(
-        "--report-html",
-        action="store_true",
-        default=False,
-        help="Generate an aggregated HTML report at session end."
+        "--report-html", action="store_true", default=False, help="Generate an aggregated HTML report at session end."
     )
 
 
@@ -147,9 +147,11 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:  # n
     if not cfg.generate_html:
         return
     from .html_report import generate_report
+
     report_path = generate_report(cfg.output_dir, title=cfg.title)
     if report_path:
         import os
+
         abs_path = os.path.abspath(report_path)
         logger.info(f"Report: file://{abs_path}")
 
@@ -157,8 +159,10 @@ def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:  # n
 @pytest.fixture
 def report_test_name(request: pytest.FixtureRequest):
     """Override the test name used in the report at runtime."""
+
     def _set(name: str) -> None:
         reporter = request.node.stash.get(_reporter_key, None)
         if reporter is not None:
             reporter.test_name = name
+
     return _set

@@ -4,6 +4,7 @@ JSON report builder for a single test.
 Schema dataclasses (ReportEvent, ReportStep, JsonReport) live here — no
 separate types.py needed.
 """
+
 from __future__ import annotations
 
 import functools
@@ -14,18 +15,12 @@ import traceback
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 from custom_python_logger import get_logger
 
 from .helpers import _now_millis
 
 logger = get_logger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# Schema dataclasses
-# ---------------------------------------------------------------------------
 
 
 @dataclass
@@ -35,9 +30,9 @@ class ReportEvent:
     startTime: int
     level: str
     event: str
-    type: Optional[str] = None
-    sourceFileName: Optional[str] = None
-    sourceLineNumber: Optional[int] = None
+    type: str | None = None
+    sourceFileName: str | None = None
+    sourceLineNumber: int | None = None
 
     def to_dict(self) -> dict:
         d: dict = {"startTime": self.startTime, "level": self.level, "event": self.event}
@@ -59,8 +54,8 @@ class ReportStep:
     name: str = ""
     status: str = "PASSED"
     events: list[ReportEvent] = field(default_factory=list)
-    failureMessage: Optional[str] = None
-    stackTrace: Optional[str] = None
+    failureMessage: str | None = None
+    stackTrace: str | None = None
 
     def to_dict(self) -> dict:
         d: dict = {
@@ -88,9 +83,9 @@ class JsonReport:
 
     steps: list[ReportStep] = field(default_factory=list)
     testStatus: str = "PASSED"
-    className: Optional[str] = None
-    failureMessage: Optional[str] = None
-    stackTrace: Optional[str] = None
+    className: str | None = None
+    failureMessage: str | None = None
+    stackTrace: str | None = None
 
     def to_dict(self) -> dict:
         d: dict = {
@@ -104,11 +99,6 @@ class JsonReport:
         if self.stackTrace is not None:
             d["stackTrace"] = self.stackTrace
         return d
-
-
-# ---------------------------------------------------------------------------
-# TestReporter
-# ---------------------------------------------------------------------------
 
 
 class TestReporter:
@@ -128,20 +118,16 @@ class TestReporter:
     def __init__(
         self,
         test_name: str,
-        class_name: Optional[str],
+        class_name: str | None,
         output_dir: str,
     ) -> None:
         self.test_name = test_name
         self.output_dir = output_dir
         self._timestamp = os.environ.get("REPORT_TIMESTAMP", "").strip() or str(_now_millis())
         self._report = JsonReport(className=class_name)
-        self._current_step: Optional[ReportStep] = None
+        self._current_step: ReportStep | None = None
         self._step_counter = 0
         self._is_phase = False
-
-    # ------------------------------------------------------------------
-    # Named steps — user-facing, driven by the step() context manager
-    # ------------------------------------------------------------------
 
     def begin_step(self, name: str) -> None:
         self._close_step()
@@ -154,14 +140,10 @@ class TestReporter:
 
     def end_step(
         self,
-        failure_message: Optional[str] = None,
-        stack_trace: Optional[str] = None,
+        failure_message: str | None = None,
+        stack_trace: str | None = None,
     ) -> None:
         self._close_step(failure_message, stack_trace)
-
-    # ------------------------------------------------------------------
-    # Phase steps — auto-created by the plugin for Setup/test/Teardown
-    # ------------------------------------------------------------------
 
     def begin_phase(self, name: str) -> None:
         self._close_step()
@@ -170,8 +152,8 @@ class TestReporter:
 
     def end_phase(
         self,
-        failure_message: Optional[str] = None,
-        stack_trace: Optional[str] = None,
+        failure_message: str | None = None,
+        stack_trace: str | None = None,
     ) -> None:
         if self._current_step is None:
             return
@@ -182,10 +164,6 @@ class TestReporter:
             last = self._report.steps[-1]
             if last.name in ("Setup", "Teardown") and not last.events and last.status == "PASSED":
                 self._report.steps.pop()
-
-    # ------------------------------------------------------------------
-    # Events — extensibility hook (e.g. for custom log capture)
-    # ------------------------------------------------------------------
 
     def add_event(self, event: ReportEvent) -> None:
         if self._current_step is not None:
@@ -200,16 +178,12 @@ class TestReporter:
                 )
             )
 
-    # ------------------------------------------------------------------
-    # Finalization
-    # ------------------------------------------------------------------
-
     def finalize(
         self,
         status: str,
-        failure_message: Optional[str] = None,
-        stack_trace: Optional[str] = None,
-    ) -> Optional[str]:
+        failure_message: str | None = None,
+        stack_trace: str | None = None,
+    ) -> str | None:
         """Close any open step, set final status, write JSON. Returns the file path."""
         self._close_step()
         self._report.testStatus = status
@@ -217,14 +191,10 @@ class TestReporter:
         self._report.stackTrace = stack_trace
         return self._write()
 
-    # ------------------------------------------------------------------
-    # Private
-    # ------------------------------------------------------------------
-
     def _close_step(
         self,
-        failure_message: Optional[str] = None,
-        stack_trace: Optional[str] = None,
+        failure_message: str | None = None,
+        stack_trace: str | None = None,
     ) -> None:
         if self._current_step is None:
             return
@@ -237,7 +207,7 @@ class TestReporter:
         self._current_step = None
         self._is_phase = False
 
-    def _write(self) -> Optional[str]:
+    def _write(self) -> str | None:
         try:
             out = Path(self.output_dir) / "json"
             out.mkdir(parents=True, exist_ok=True)
@@ -253,13 +223,7 @@ class TestReporter:
             return None
 
 
-# ---------------------------------------------------------------------------
-# ContextVar + step context manager / decorator
-# ---------------------------------------------------------------------------
-
-_active_reporter: ContextVar["TestReporter | None"] = ContextVar(
-    "_active_reporter", default=None
-)
+_active_reporter: ContextVar[TestReporter | None] = ContextVar("_active_reporter", default=None)
 
 
 class step:
@@ -283,7 +247,7 @@ class step:
         self.name = name
 
     # sync context manager
-    def __enter__(self) -> "step":
+    def __enter__(self) -> step:
         if (r := _active_reporter.get()) is not None:
             r.begin_step(self.name)
         return self
@@ -298,7 +262,7 @@ class step:
         return False
 
     # async context manager
-    async def __aenter__(self) -> "step":
+    async def __aenter__(self) -> step:
         if (r := _active_reporter.get()) is not None:
             r.begin_step(self.name)
         return self
@@ -315,6 +279,7 @@ class step:
     # decorator
     def __call__(self, func):
         if inspect.iscoroutinefunction(func):
+
             @functools.wraps(func)
             async def _async(*args, **kwargs):
                 async with self:
@@ -322,6 +287,7 @@ class step:
 
             return _async
         else:
+
             @functools.wraps(func)
             def _sync(*args, **kwargs):
                 with self:

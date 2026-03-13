@@ -1,6 +1,7 @@
 """
 Package-wide constants for pytest-reporter-html.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass

@@ -4,6 +4,7 @@ Shared helpers for pytest-reporter-html.
 All pure utility functions live here so plugin.py and reporter.py stay
 focused on their own responsibilities.
 """
+
 from __future__ import annotations
 
 import time
@@ -13,29 +14,14 @@ import pytest
 from .const import TestStatus
 
 
-# ---------------------------------------------------------------------------
-# Timing
-# ---------------------------------------------------------------------------
-
-
 def _now_millis() -> int:
     """Return the current UTC time in milliseconds."""
     return int(time.time() * 1000)
 
 
-# ---------------------------------------------------------------------------
-# Test status
-# ---------------------------------------------------------------------------
-
-
 def _worse(a: str, b: str) -> str:
     """Return whichever status is more severe."""
     return b if TestStatus[b] > TestStatus[a] else a
-
-
-# ---------------------------------------------------------------------------
-# Pytest report helpers
-# ---------------------------------------------------------------------------
 
 
 def _extract_failure(report: pytest.TestReport) -> tuple[str, str]:

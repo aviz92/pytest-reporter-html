@@ -9,6 +9,7 @@ index pages.
 This is a direct port of the JUnit reporter's ``AggregatedReportGenerator.java``
 so both reporters produce visually identical HTML output.
 """
+
 from __future__ import annotations
 
 import json
@@ -17,7 +18,6 @@ import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 # ---------------------------------------------------------------------------
 # Timestamp format matching Logger.java / JUnit reporter
@@ -37,13 +37,14 @@ def _format_ts(dt: datetime) -> str:
 # Data classes (mirrors Java inner classes)
 # ---------------------------------------------------------------------------
 
+
 @dataclass
 class TestEvent:
     level: str = ""
     event: str = ""
-    type: Optional[str] = None
-    sourceFileName: Optional[str] = None
-    sourceLineNumber: Optional[int] = None
+    type: str | None = None
+    sourceFileName: str | None = None
+    sourceLineNumber: int | None = None
 
 
 @dataclass
@@ -52,8 +53,8 @@ class TestStep:
     startTime: int = 0
     endTime: int = 0
     status: str = "PASSED"
-    failureMessage: Optional[str] = None
-    stackTrace: Optional[str] = None
+    failureMessage: str | None = None
+    stackTrace: str | None = None
     events: list[TestEvent] = field(default_factory=list)
 
 
@@ -65,8 +66,8 @@ class TestResult:
     testName: str = ""
     startTime: int = 0
     status: str = "PASSED"
-    failureMessage: Optional[str] = None
-    stackTrace: Optional[str] = None
+    failureMessage: str | None = None
+    stackTrace: str | None = None
     duration: int = 0
     eventCount: int = 0
     httpRequestCount: int = 0
@@ -79,7 +80,7 @@ class RunInfo:
     timestamp: str = ""
     date: datetime = field(default_factory=datetime.now)
     fileName: str = ""
-    file: Optional[Path] = None
+    file: Path | None = None
     tryNumber: int = 1
 
 
@@ -87,7 +88,8 @@ class RunInfo:
 # Public API
 # ---------------------------------------------------------------------------
 
-def generate_report(report_directory: str, *, title: str = "Test Report") -> Optional[str]:
+
+def generate_report(report_directory: str, *, title: str = "Test Report") -> str | None:
     """
     Generate an aggregated HTML report from all JSON files in
     ``report_directory/json/``.
@@ -111,7 +113,7 @@ def generate_report(report_directory: str, *, title: str = "Test Report") -> Opt
         test_results: list[TestResult] = []
         for jf in json_files:
             try:
-                with open(jf, "r", encoding="utf-8") as f:
+                with open(jf, encoding="utf-8") as f:
                     root = json.load(f)
                 test_results.append(_parse_test_result(jf.name, root))
             except Exception:
@@ -168,6 +170,7 @@ def generate_report(report_directory: str, *, title: str = "Test Report") -> Opt
 # ---------------------------------------------------------------------------
 # JSON parsing
 # ---------------------------------------------------------------------------
+
 
 def _parse_test_result(filename: str, root: dict) -> TestResult:
     result = TestResult(filename=filename)
@@ -246,6 +249,7 @@ def _parse_test_result(filename: str, root: dict) -> TestResult:
 # Timestamp helpers
 # ---------------------------------------------------------------------------
 
+
 def _resolve_timestamp() -> str:
     ts = os.environ.get("REPORT_TIMESTAMP")
     if ts and ts.strip():
@@ -267,6 +271,7 @@ def _format_timestamp_hms(epoch_millis: int) -> str:
 # ---------------------------------------------------------------------------
 # Run discovery / try-number tracking
 # ---------------------------------------------------------------------------
+
 
 def _find_all_runs(report_dir: Path) -> list[RunInfo]:
     runs: list[RunInfo] = []
@@ -324,7 +329,7 @@ def _parse_previous_run_tests(run: RunInfo) -> list[TestResult]:
             tr = TestResult()
             tr.methodName = m.group(2)
             start = m.start()
-            before = content[max(0, start - 500): start]
+            before = content[max(0, start - 500) : start]
             cm = re.search(r"<h2 class='class-name'>(.*?)</h2>", before, re.DOTALL)
             if cm:
                 tr.className = cm.group(1).strip()
@@ -343,6 +348,7 @@ def _parse_previous_run_tests(run: RunInfo) -> list[TestResult]:
 def _try_download_previous_runs(report_directory: str) -> None:
     try:
         from .s3_utils import download_previous_runs_from_s3  # type: ignore[attr-defined]
+
         download_previous_runs_from_s3(report_directory)
     except (ImportError, AttributeError):
         pass
@@ -354,7 +360,8 @@ def _try_download_previous_runs(report_directory: str) -> None:
 # HTML helpers
 # ---------------------------------------------------------------------------
 
-def _escape_html(text: Optional[str]) -> str:
+
+def _escape_html(text: str | None) -> str:
     if text is None:
         return ""
     return (
@@ -414,6 +421,7 @@ def _format_try_number(try_number: int) -> str:
 # JSON formatting / syntax highlighting for display
 # ---------------------------------------------------------------------------
 
+
 def _format_json_for_display(json_str: str) -> str:
     if not json_str or not json_str.strip():
         return ""
@@ -456,11 +464,12 @@ def _format_json_for_display(json_str: str) -> str:
     return escaped
 
 
-def _try_pretty_json(text: str) -> Optional[str]:
+def _try_pretty_json(text: str) -> str | None:
     """Return pretty-printed JSON if ``text`` is valid JSON, else None."""
     stripped = text.strip()
-    if not ((stripped.startswith("{") and stripped.endswith("}"))
-            or (stripped.startswith("[") and stripped.endswith("]"))):
+    if not (
+        (stripped.startswith("{") and stripped.endswith("}")) or (stripped.startswith("[") and stripped.endswith("]"))
+    ):
         return None
     try:
         obj = json.loads(stripped)
@@ -554,15 +563,13 @@ def _format_event_with_json(event_text: str) -> str:
 
     if result:
         if last_processed < length:
-            result.append(
-                f"<span class='event-text'>{_escape_html(event_text[last_processed:])}</span>"
-            )
+            result.append(f"<span class='event-text'>{_escape_html(event_text[last_processed:])}</span>")
         return "".join(result)
 
     return f"<span class='event-text'>{_escape_html(event_text)}</span>"
 
 
-def _extract_curl_from_json(json_str: str) -> Optional[str]:
+def _extract_curl_from_json(json_str: str) -> str | None:
     """Generate a curl command from an HTTP request JSON."""
     if not json_str or '"method"' not in json_str or '"url"' not in json_str:
         return None
@@ -593,25 +600,43 @@ def _extract_curl_from_json(json_str: str) -> Optional[str]:
 # Rendering helpers
 # ---------------------------------------------------------------------------
 
+
 def _render_http_request_with_curl(
-    json_str: str, curl_cmd: str, unique_id: str,
+    json_str: str,
+    curl_cmd: str,
+    unique_id: str,
 ) -> str:
-    h: list[str] = ["<div class='http-event http-request'>\n", "<div class='http-header'>\n", "<span class='http-icon'>&#127760;</span>\n", "<strong>HTTP Request</strong>\n", "</div>\n",
-                    "<div class='json-container' style='margin-top: 12px;'>\n", "<div class='json-header'>\n", "<span class='json-label'>Request Details</span>\n",
-                    f"<button class='copy-btn' onclick='copyToClipboard(\"{unique_id}\")' title='Copy JSON'>&#128203;</button>\n", "</div>\n"]
+    h: list[str] = [
+        "<div class='http-event http-request'>\n",
+        "<div class='http-header'>\n",
+        "<span class='http-icon'>&#127760;</span>\n",
+        "<strong>HTTP Request</strong>\n",
+        "</div>\n",
+        "<div class='json-container' style='margin-top: 12px;'>\n",
+        "<div class='json-header'>\n",
+        "<span class='json-label'>Request Details</span>\n",
+        f"<button class='copy-btn' onclick='copyToClipboard(\"{unique_id}\")' title='Copy JSON'>&#128203;</button>\n",
+        "</div>\n",
+    ]
     # JSON
     data_orig = _escape_html(json_str).replace("'", "&#39;")
-    h.append(f"<pre class='event-json' id='json-{unique_id}' data-original='{data_orig}'>{_format_json_for_display(json_str)}</pre>\n")
+    h.append(
+        f"<pre class='event-json' id='json-{unique_id}' data-original='{data_orig}'>{_format_json_for_display(json_str)}</pre>\n"
+    )
     h.append("</div>\n")
     # cURL
     curl_id = f"{unique_id}-curl"
     h.append("<div class='curl-container' style='margin-top: 12px;'>\n")
     h.append("<div class='curl-header'>\n")
     h.append("<span class='curl-label'>&#128203; cURL Command</span>\n")
-    h.append(f"<button class='copy-btn' onclick='copyCurlCommand(\"{curl_id}\")' title='Copy cURL'>&#128203;</button>\n")
+    h.append(
+        f"<button class='copy-btn' onclick='copyCurlCommand(\"{curl_id}\")' title='Copy cURL'>&#128203;</button>\n"
+    )
     h.append("</div>\n")
     curl_orig = _escape_html(curl_cmd).replace("'", "&#39;")
-    h.append(f"<pre class='curl-command' id='curl-{curl_id}' data-original='{curl_orig}'>{_escape_html(curl_cmd)}</pre>\n")
+    h.append(
+        f"<pre class='curl-command' id='curl-{curl_id}' data-original='{curl_orig}'>{_escape_html(curl_cmd)}</pre>\n"
+    )
     h.append("</div>\n")
     h.append("</div>\n")
     return "".join(h)
@@ -646,23 +671,42 @@ def _render_event_with_traceback(event_text: str, uid: str) -> str:
     tb_marker = "\nTraceback (most recent call last):"
     pos = event_text.index(tb_marker)
     message = event_text[:pos]
-    traceback_text = event_text[pos + 1:]  # skip the leading newline
+    traceback_text = event_text[pos + 1 :]  # skip the leading newline
 
-    h: list[str] = [f"<span class='event-text'>{_escape_html(message)}</span>\n", "<div class='event-stacktrace-section'>\n", f"<div class='event-stacktrace-toggle' onclick='toggleEventStackTrace(\"{uid}\")'>\n",
-                    f"<span class='event-stacktrace-icon open' id='event-stacktrace-icon-{uid}'>&#9654;</span>\n", "<strong>Exception</strong>\n", "</div>\n",
-                    f"<pre class='event-stacktrace-content' id='event-stacktrace-{uid}' style='display: block;'>{_escape_html(traceback_text)}</pre>\n", "</div>\n"]
+    h: list[str] = [
+        f"<span class='event-text'>{_escape_html(message)}</span>\n",
+        "<div class='event-stacktrace-section'>\n",
+        f"<div class='event-stacktrace-toggle' onclick='toggleEventStackTrace(\"{uid}\")'>\n",
+        f"<span class='event-stacktrace-icon open' id='event-stacktrace-icon-{uid}'>&#9654;</span>\n",
+        "<strong>Exception</strong>\n",
+        "</div>\n",
+        f"<pre class='event-stacktrace-content' id='event-stacktrace-{uid}' style='display: block;'>{_escape_html(traceback_text)}</pre>\n",
+        "</div>\n",
+    ]
     return "".join(h)
 
 
 def _render_test(result: TestResult, index: int) -> str:
     status_class = "passed" if result.status == "PASSED" else "failed"
-    status_icon = "<span class='status-dot pass'></span>" if result.status == "PASSED" else "<span class='status-dot fail'></span>"
+    status_icon = (
+        "<span class='status-dot pass'></span>"
+        if result.status == "PASSED"
+        else "<span class='status-dot fail'></span>"
+    )
     auto_open = result.status == "FAILED"
 
     total_events = sum(len(s.events) for s in result.steps)
 
-    h: list[str] = [f"<div class='test-item {status_class}' data-status='{result.status}'>\n", f"<div class='test-header' onclick='toggleTest({index})'>\n", f"{status_icon}\n", "<div class='test-name-container'>\n",
-                    f"<span class='test-name'>{_escape_html(result.testName)}</span>\n", f"<span class='test-method-name'>{_escape_html(result.methodName)}</span>\n", "</div>\n", "<span class='test-meta'>\n"]
+    h: list[str] = [
+        f"<div class='test-item {status_class}' data-status='{result.status}'>\n",
+        f"<div class='test-header' onclick='toggleTest({index})'>\n",
+        f"{status_icon}\n",
+        "<div class='test-name-container'>\n",
+        f"<span class='test-name'>{_escape_html(result.testName)}</span>\n",
+        f"<span class='test-method-name'>{_escape_html(result.methodName)}</span>\n",
+        "</div>\n",
+        "<span class='test-meta'>\n",
+    ]
     dur = result.duration / 1000
     h.append(f"<span class='meta-item meta-duration'>{dur:.2f}s</span>\n")
     if total_events > 0:
@@ -687,7 +731,9 @@ def _render_test(result: TestResult, index: int) -> str:
             h.append(f"<span class='stacktrace-icon' id='stacktrace-icon-{index}'>&#9654;</span>\n")
             h.append("<strong>Stack Trace</strong>\n")
             h.append("</div>\n")
-            h.append(f"<pre class='stacktrace-content' id='stacktrace-{index}' style='display: none;'>{_escape_html(result.stackTrace)}</pre>\n")
+            h.append(
+                f"<pre class='stacktrace-content' id='stacktrace-{index}' style='display: none;'>{_escape_html(result.stackTrace)}</pre>\n"
+            )
             h.append("</div>\n")
         h.append("</div>\n")
 
@@ -741,7 +787,9 @@ def _render_test(result: TestResult, index: int) -> str:
                     h.append("<div class='json-container'>\n")
                     h.append("<div class='json-header'>\n")
                     h.append("<span class='json-label'>JSON</span>\n")
-                    h.append(f"<button class='copy-btn' onclick='copyToClipboard(\"{uid}\")' title='Copy JSON'>&#128203;</button>\n")
+                    h.append(
+                        f"<button class='copy-btn' onclick='copyToClipboard(\"{uid}\")' title='Copy JSON'>&#128203;</button>\n"
+                    )
                     h.append("</div>\n")
                     data_orig = _escape_html(ev.event).replace("'", "&#39;")
                     pretty = _try_pretty_json(ev.event)
@@ -751,13 +799,15 @@ def _render_test(result: TestResult, index: int) -> str:
             elif "HTTP Request:" in ev.event or "HTTP Response:" in ev.event:
                 h.append(_render_http_event(ev.event))
             elif ev.event.startswith("Stack Trace:"):
-                st_content = ev.event[len("Stack Trace:"):].strip()
+                st_content = ev.event[len("Stack Trace:") :].strip()
                 h.append("<div class='event-stacktrace-section'>\n")
                 h.append(f"<div class='event-stacktrace-toggle' onclick='toggleEventStackTrace(\"{uid}\")'>\n")
                 h.append(f"<span class='event-stacktrace-icon open' id='event-stacktrace-icon-{uid}'>&#9654;</span>\n")
                 h.append("<strong>Stack Trace</strong>\n")
                 h.append("</div>\n")
-                h.append(f"<pre class='event-stacktrace-content' id='event-stacktrace-{uid}' style='display: block;'>{_escape_html(st_content)}</pre>\n")
+                h.append(
+                    f"<pre class='event-stacktrace-content' id='event-stacktrace-{uid}' style='display: block;'>{_escape_html(st_content)}</pre>\n"
+                )
                 h.append("</div>\n")
             elif "\nTraceback (most recent call last):" in ev.event:
                 h.append(_render_event_with_traceback(ev.event, uid))
@@ -778,6 +828,7 @@ def _render_test(result: TestResult, index: int) -> str:
 # Full-page HTML generation
 # ---------------------------------------------------------------------------
 
+
 def _generate_html(
     results: list[TestResult],
     grouped: dict[str, list[TestResult]],
@@ -794,8 +845,18 @@ def _generate_html(
 
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    h: list[str] = ["<!DOCTYPE html>\n<html lang='en'>\n<head>\n", "<meta charset='UTF-8'>\n", "<meta name='viewport' content='width=device-width, initial-scale=1.0'>\n", f"<title>{_escape_html(title)}</title>\n", "<style>\n",
-                    _get_css(), "</style>\n", "</head>\n<body>\n", "<header class='header'>\n", "<div class='header-top'>\n"]
+    h: list[str] = [
+        "<!DOCTYPE html>\n<html lang='en'>\n<head>\n",
+        "<meta charset='UTF-8'>\n",
+        "<meta name='viewport' content='width=device-width, initial-scale=1.0'>\n",
+        f"<title>{_escape_html(title)}</title>\n",
+        "<style>\n",
+        _get_css(),
+        "</style>\n",
+        "</head>\n<body>\n",
+        "<header class='header'>\n",
+        "<div class='header-top'>\n",
+    ]
 
     # Header
     if is_ci:
@@ -828,13 +889,17 @@ def _generate_html(
 
     # Toolbar
     h.append("<div class='toolbar'>\n")
-    h.append("<input type='text' id='searchInput' class='search-input' placeholder='Search tests...' onkeyup='filterTests()'>\n")
+    h.append(
+        "<input type='text' id='searchInput' class='search-input' placeholder='Search tests...' onkeyup='filterTests()'>\n"
+    )
     h.append("<select id='statusFilter' class='status-filter' onchange='filterTests()'>\n")
     h.append("<option value='all'>All</option>\n")
     h.append("<option value='PASSED'>Passed</option>\n")
     h.append("<option value='FAILED'>Failed</option>\n")
     h.append("</select>\n")
-    h.append("<select id='logLevelFilter' class='status-filter' onchange='filterLogLevel()' title='Minimum log level to display'>\n")
+    h.append(
+        "<select id='logLevelFilter' class='status-filter' onchange='filterLogLevel()' title='Minimum log level to display'>\n"
+    )
     h.append("<option value='TRACE'>TRACE</option>\n")
     h.append("<option value='DEBUG' selected>DEBUG</option>\n")
     h.append("<option value='INFO'>INFO</option>\n")
@@ -856,7 +921,9 @@ def _generate_html(
             cls_failed = cls_total - cls_passed
             cls_status = "class-all-pass" if cls_failed == 0 else "class-has-fail"
             display_name = _format_class_name(class_name)
-            h.append(f"<div class='test-class-group {cls_status}' data-class-status='{'FAILED' if cls_failed else 'PASSED'}'>\n")
+            h.append(
+                f"<div class='test-class-group {cls_status}' data-class-status='{'FAILED' if cls_failed else 'PASSED'}'>\n"
+            )
             h.append(f"<h2 class='class-name' onclick='toggleClassGroup({cls_idx})'>\n")
             h.append(f"<span class='class-toggle-icon' id='class-icon-{cls_idx}'>&#9660;</span>\n")
             h.append(f"<span class='class-display-name'>{_escape_html(display_name)}</span>\n")
@@ -889,11 +956,25 @@ def _generate_html(
 # Index page (CI mode — lists all runs)
 # ---------------------------------------------------------------------------
 
+
 def _generate_index_page(runs: list[RunInfo], current_timestamp: str) -> str:
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-    h: list[str] = ["<!DOCTYPE html>\n<html>\n<head>\n", "<meta charset='UTF-8'>\n", "<title>Test Reports - All Runs</title>\n", "<style>\n", _get_index_css(), "</style>\n", "</head>\n<body>\n", "<div class='header'>\n",
-                    "<h1>&#128202; Test Execution Reports - All Runs</h1>\n", f"<div class='timestamp'>Generated: {now_str}</div>\n", "</div>\n", "<div class='runs-container'>\n", "<h2>Available Test Runs</h2>\n"]
+    h: list[str] = [
+        "<!DOCTYPE html>\n<html>\n<head>\n",
+        "<meta charset='UTF-8'>\n",
+        "<title>Test Reports - All Runs</title>\n",
+        "<style>\n",
+        _get_index_css(),
+        "</style>\n",
+        "</head>\n<body>\n",
+        "<div class='header'>\n",
+        "<h1>&#128202; Test Execution Reports - All Runs</h1>\n",
+        f"<div class='timestamp'>Generated: {now_str}</div>\n",
+        "</div>\n",
+        "<div class='runs-container'>\n",
+        "<h2>Available Test Runs</h2>\n",
+    ]
 
     if not runs:
         h.append("<div class='no-runs'>No test runs found.</div>\n")
@@ -929,6 +1010,7 @@ def _generate_index_page(runs: list[RunInfo], current_timestamp: str) -> str:
 # ---------------------------------------------------------------------------
 # CSS (identical to JUnit reporter's AggregatedReportGenerator.getCSS)
 # ---------------------------------------------------------------------------
+
 
 def _get_css() -> str:
     mono = "'SF Mono','Monaco','Inconsolata','Roboto Mono','Courier New',monospace"
@@ -1123,6 +1205,7 @@ def _get_index_css() -> str:
 # ---------------------------------------------------------------------------
 # JavaScript (identical to JUnit reporter's AggregatedReportGenerator.getJavaScript)
 # ---------------------------------------------------------------------------
+
 
 def _get_javascript() -> str:
     return """\

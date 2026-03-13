@@ -12,8 +12,8 @@ Public API::
     async def create_user(client):
         ...
 """
-from .reporter import JsonReport, ReportEvent, ReportStep
-from .reporter import step
+
+from .reporter import JsonReport, ReportEvent, ReportStep, step
 
 __all__ = [
     "step",

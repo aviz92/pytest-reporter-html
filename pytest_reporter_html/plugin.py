@@ -3,12 +3,17 @@
 from __future__ import annotations
 
 import logging
+import os
+from collections.abc import Generator
+from typing import Any
 
 import pytest
+from _pytest.python import Function
 from custom_python_logger import get_logger
 
 from .const import PluginConfig, TestStatus
 from .helpers import _extract_failure, _module_label, _now_millis, _worse
+from .html_report import generate_report
 from .reporter import ReportEvent, TestReporter, _active_reporter
 
 logger = get_logger(__name__)
@@ -74,10 +79,9 @@ def pytest_runtest_setup(item: pytest.Item) -> None:
 
 
 @pytest.hookimpl(hookwrapper=True)
-def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):  # noqa: ARG001
+def pytest_runtest_makereport(item: Function) -> Generator[None, Any, None]:
     outcome = yield
-    reporter = item.stash.get(_reporter_key, None)
-    if reporter is None:
+    if (reporter := item.stash.get(_reporter_key, None)) is None:
         return
 
     report: pytest.TestReport = outcome.get_result()
@@ -99,8 +103,7 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):  # noqa
         if report.failed:
             failure = _extract_failure(report)
             reporter.end_phase(*failure)
-            new = _worse(item.stash[_status_key], TestStatus.FAILED.name)
-            if new != item.stash[_status_key]:
+            if (new := _worse(item.stash[_status_key], TestStatus.FAILED.name)) != item.stash[_status_key]:
                 item.stash[_status_key] = new
                 item.stash[_failure_key] = failure
         elif report.skipped:
@@ -113,8 +116,7 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):  # noqa
         if report.failed:
             failure = _extract_failure(report)
             reporter.end_phase(*failure)
-            new = _worse(item.stash[_status_key], TestStatus.ERROR.name)
-            if new != item.stash[_status_key]:
+            if (new := _worse(item.stash[_status_key], TestStatus.ERROR.name)) != item.stash[_status_key]:
                 item.stash[_status_key] = new
                 item.stash[_failure_key] = failure
         else:
@@ -127,8 +129,7 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):  # noqa
             stack_trace=failure[1] if failure else None,
         )
 
-        handler = item.stash.get(_handler_key, None)
-        if handler is not None:
+        if (handler := item.stash.get(_handler_key, None)) is not None:
             logging.getLogger().removeHandler(handler)
 
         _active_reporter.set(None)
@@ -137,32 +138,26 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):  # noqa
 
 @pytest.hookimpl(tryfirst=True)
 def pytest_runtest_teardown(item: pytest.Item) -> None:
-    reporter = item.stash.get(_reporter_key, None)
-    if reporter is not None:
+    if (reporter := item.stash.get(_reporter_key, None)) is not None:
         reporter.begin_phase("Teardown")
 
 
-def pytest_sessionfinish(session: pytest.Session, exitstatus: int) -> None:  # noqa: ARG001
+def pytest_sessionfinish(session: pytest.Session) -> None:  # noqa: ARG001
     cfg = session.config.stash[_cfg_key]
     if not cfg.generate_html:
         return
-    from .html_report import generate_report
 
-    report_path = generate_report(cfg.output_dir, title=cfg.title)
-    if report_path:
-        import os
-
+    if report_path := generate_report(cfg.output_dir, title=cfg.title):
         abs_path = os.path.abspath(report_path)
         logger.info(f"Report: file://{abs_path}")
 
 
 @pytest.fixture
-def report_test_name(request: pytest.FixtureRequest):
+def report_test_name(request: pytest.FixtureRequest) -> callable[[str], None]:
     """Override the test name used in the report at runtime."""
 
     def _set(name: str) -> None:
-        reporter = request.node.stash.get(_reporter_key, None)
-        if reporter is not None:
+        if (reporter := request.node.stash.get(_reporter_key, None)) is not None:
             reporter.test_name = name
 
     return _set

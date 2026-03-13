@@ -12,9 +12,11 @@ import inspect
 import json
 import os
 import traceback
+from collections.abc import Callable
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
+from types import TracebackType
 
 from custom_python_logger import get_logger
 
@@ -162,7 +164,7 @@ class TestReporter:
         # Drop empty, passing Setup/Teardown phases to keep reports clean.
         if is_phase and self._report.steps:
             last = self._report.steps[-1]
-            if last.name in ("Setup", "Teardown") and not last.events and last.status == "PASSED":
+            if last.name in {"Setup", "Teardown"} and not last.events and last.status == "PASSED":
                 self._report.steps.pop()
 
     def add_event(self, event: ReportEvent) -> None:
@@ -252,7 +254,12 @@ class step:
             r.begin_step(self.name)
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> bool:
         if (r := _active_reporter.get()) is not None:
             if exc_val is not None:
                 trace = "".join(traceback.format_exception(exc_type, exc_val, exc_tb))
@@ -267,7 +274,12 @@ class step:
             r.begin_step(self.name)
         return self
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb) -> bool:
+    async def __aexit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc_val: BaseException | None,
+        exc_tb: TracebackType | None,
+    ) -> bool:
         if (r := _active_reporter.get()) is not None:
             if exc_val is not None:
                 trace = "".join(traceback.format_exception(exc_type, exc_val, exc_tb))
@@ -277,20 +289,19 @@ class step:
         return False
 
     # decorator
-    def __call__(self, func):
+    def __call__(self, func: Callable) -> Callable:
         if inspect.iscoroutinefunction(func):
 
             @functools.wraps(func)
-            async def _async(*args, **kwargs):
+            async def _async(*args: object, **kwargs: object) -> object:
                 async with self:
                     return await func(*args, **kwargs)
 
             return _async
-        else:
 
-            @functools.wraps(func)
-            def _sync(*args, **kwargs):
-                with self:
-                    return func(*args, **kwargs)
+        @functools.wraps(func)
+        def _sync(*args: object, **kwargs: object) -> object:
+            with self:
+                return func(*args, **kwargs)
 
-            return _sync
+        return _sync

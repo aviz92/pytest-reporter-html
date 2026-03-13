@@ -11,18 +11,17 @@ from pytest_reporter_html.plugin import _ReportLogHandler
 from pytest_reporter_html.reporter import TestReporter
 
 
-@pytest.fixture
-def reporter(tmp_path) -> TestReporter:
-    r = TestReporter(
-        test_name="test_example",
-        class_name="tests.test_plugin",
-        output_dir=str(tmp_path),
-    )
-    r.begin_phase("test_example")
-    return r
-
-
 class TestReportLogHandler:
+    @pytest.fixture
+    def reporter(self, tmp_path) -> TestReporter:
+        r = TestReporter(
+            test_name="test_example",
+            class_name="tests.test_plugin",
+            output_dir=str(tmp_path),
+        )
+        r.begin_phase("test_example")
+        return r
+
     def test_emit_adds_event_to_reporter(self, reporter: TestReporter) -> None:
         handler = _ReportLogHandler(reporter)
         handler.setFormatter(logging.Formatter("%(message)s"))
@@ -38,9 +37,9 @@ class TestReportLogHandler:
         )
         handler.emit(record)
 
-        assert reporter._current_step is not None, "current_step should still be open"
-        assert len(reporter._current_step.events) == 1, f"Expected 1 event, got {len(reporter._current_step.events)}"
-        event = reporter._current_step.events[0]
+        assert reporter.current_step is not None, "current_step should still be open"
+        assert len(reporter.current_step.events) == 1, f"Expected 1 event, got {len(reporter.current_step.events)}"
+        event = reporter.current_step.events[0]
         assert event.level == "INFO", f"Level mismatch: {event.level!r}"
         assert event.event == "hello from log", f"Message mismatch: {event.event!r}"
         assert event.sourceFileName == "test_file.py", f"sourceFileName mismatch: {event.sourceFileName!r}"
@@ -63,7 +62,7 @@ class TestReportLogHandler:
             )
             handler.emit(record)
 
-        handler.handleError.assert_called_once(), "handleError should be called on exception"
+        handler.handleError.assert_called_once()
 
     def test_emit_multiple_records(self, reporter: TestReporter) -> None:
         handler = _ReportLogHandler(reporter)
@@ -81,7 +80,7 @@ class TestReportLogHandler:
             )
             handler.emit(record)
 
-        assert len(reporter._current_step.events) == 3, f"Expected 3 events, got {len(reporter._current_step.events)}"
+        assert len(reporter.current_step.events) == 3, f"Expected 3 events, got {len(reporter.current_step.events)}"
 
 
 class TestReportTestNameFixture:

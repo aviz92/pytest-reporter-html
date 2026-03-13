@@ -1,3 +1,6 @@
+# pylint: disable=too-many-lines, too-many-instance-attributes, too-many-statements, too-many-branches, too-complex,
+# pylint: disable=too-many-locals, too-many-arguments, too-many-public-methods, too-many-nested-blocks, too-many-return-statements
+
 """
 Aggregated HTML report generator for pytest.
 
@@ -106,8 +109,7 @@ def generate_report(report_directory: str, *, title: str = "Test Report") -> str
         if not json_dir.is_dir():
             return None
 
-        json_files = sorted(json_dir.glob("*.json"))
-        if not json_files:
+        if not (json_files := sorted(json_dir.glob("*.json"))):
             return None
 
         test_results: list[TestResult] = []
@@ -175,8 +177,7 @@ def generate_report(report_directory: str, *, title: str = "Test Report") -> str
 def _parse_test_result(filename: str, root: dict) -> TestResult:
     result = TestResult(filename=filename)
 
-    steps_data = root.get("steps", [])
-    if not steps_data:
+    if not (steps_data := root.get("steps", [])):
         return result
 
     first = steps_data[0]
@@ -330,8 +331,7 @@ def _parse_previous_run_tests(run: RunInfo) -> list[TestResult]:
             tr.methodName = m.group(2)
             start = m.start()
             before = content[max(0, start - 500) : start]
-            cm = re.search(r"<h2 class='class-name'>(.*?)</h2>", before, re.DOTALL)
-            if cm:
+            if cm := re.search("<h2 class='class-name'>(.*?)</h2>", before, re.DOTALL):
                 tr.className = cm.group(1).strip()
             else:
                 test_name_html = m.group(1)
@@ -347,7 +347,7 @@ def _parse_previous_run_tests(run: RunInfo) -> list[TestResult]:
 
 def _try_download_previous_runs(report_directory: str) -> None:
     try:
-        from .s3_utils import download_previous_runs_from_s3  # type: ignore[attr-defined]
+        from .s3_utils import download_previous_runs_from_s3  # pylint: disable=C0415
 
         download_previous_runs_from_s3(report_directory)
     except (ImportError, AttributeError):
@@ -474,7 +474,7 @@ def _try_pretty_json(text: str) -> str | None:
     try:
         obj = json.loads(stripped)
         return json.dumps(obj, indent=2, ensure_ascii=False)
-    except (json.JSONDecodeError, ValueError):
+    except (json.JSONDecodeError, ValueError):  # pylint: disable=W0714
         return None
 
 
@@ -493,8 +493,7 @@ def _format_event_with_json(event_text: str) -> str:
         return f"<span class='event-text'>{_escape_html(event_text)}</span>"
 
     # Try the whole message as JSON
-    pretty = _try_pretty_json(event_text)
-    if pretty is not None:
+    if (pretty := _try_pretty_json(event_text)) is not None:
         fmt = _format_json_for_display(pretty)
         return (
             "<div class='json-container'>"
@@ -508,9 +507,8 @@ def _format_event_with_json(event_text: str) -> str:
     last_processed = 0
     length = len(event_text)
 
-    while i < length:
-        c = event_text[i]
-        if c in ("{", "["):
+    while i < length:  # pylint: disable=W0149
+        if (c := event_text[i]) in {"{", "["}:
             json_start = i
             brace = 0
             bracket = 0
@@ -544,8 +542,7 @@ def _format_event_with_json(event_text: str) -> str:
 
             if json_end > json_start:
                 candidate = event_text[json_start:json_end]
-                pretty_c = _try_pretty_json(candidate)
-                if pretty_c is not None:
+                if (pretty_c := _try_pretty_json(candidate)) is not None:
                     if json_start > last_processed:
                         result.append(
                             f"<span class='event-text'>{_escape_html(event_text[last_processed:json_start])}</span>"
@@ -621,7 +618,9 @@ def _render_http_request_with_curl(
     # JSON
     data_orig = _escape_html(json_str).replace("'", "&#39;")
     h.append(
-        f"<pre class='event-json' id='json-{unique_id}' data-original='{data_orig}'>{_format_json_for_display(json_str)}</pre>\n"
+        f"<pre class='event-json' id='json-{unique_id}'"
+        f" data-original='{data_orig}'>"
+        f"{_format_json_for_display(json_str)}</pre>\n"
     )
     h.append("</div>\n")
     # cURL
@@ -680,7 +679,11 @@ def _render_event_with_traceback(event_text: str, uid: str) -> str:
         f"<span class='event-stacktrace-icon open' id='event-stacktrace-icon-{uid}'>&#9654;</span>\n",
         "<strong>Exception</strong>\n",
         "</div>\n",
-        f"<pre class='event-stacktrace-content' id='event-stacktrace-{uid}' style='display: block;'>{_escape_html(traceback_text)}</pre>\n",
+        (
+            f"<pre class='event-stacktrace-content'"
+            f" id='event-stacktrace-{uid}' style='display: block;'>"
+            f"{_escape_html(traceback_text)}</pre>\n"
+        ),
         "</div>\n",
     ]
     return "".join(h)
@@ -732,7 +735,8 @@ def _render_test(result: TestResult, index: int) -> str:
             h.append("<strong>Stack Trace</strong>\n")
             h.append("</div>\n")
             h.append(
-                f"<pre class='stacktrace-content' id='stacktrace-{index}' style='display: none;'>{_escape_html(result.stackTrace)}</pre>\n"
+                f"<pre class='stacktrace-content' id='stacktrace-{index}'"
+                f" style='display: none;'>{_escape_html(result.stackTrace)}</pre>\n"
             )
             h.append("</div>\n")
         h.append("</div>\n")
@@ -754,8 +758,7 @@ def _render_test(result: TestResult, index: int) -> str:
         h.append(f"<span class='step-name'>{_escape_html(step.name)}</span>\n")
         if step.events:
             h.append(f"<span class='step-event-count'>{len(step.events)}</span>\n")
-        dur_ms = step.endTime - step.startTime
-        if dur_ms > 0:
+        if (dur_ms := step.endTime - step.startTime) > 0:
             h.append(f"<span class='step-duration'>{dur_ms}ms</span>\n")
         h.append(f"<span class='step-time'>{_format_timestamp_hms(step.startTime)}</span>\n")
         h.append("</div>\n")
@@ -780,15 +783,14 @@ def _render_test(result: TestResult, index: int) -> str:
                 h.append(f"<span class='event-source-location'>{''.join(loc_parts)}</span>\n")
 
             if ev.type == "json":
-                curl = _extract_curl_from_json(ev.event)
-                if curl:
+                if curl := _extract_curl_from_json(ev.event):
                     h.append(_render_http_request_with_curl(ev.event, curl, uid))
                 else:
                     h.append("<div class='json-container'>\n")
                     h.append("<div class='json-header'>\n")
                     h.append("<span class='json-label'>JSON</span>\n")
                     h.append(
-                        f"<button class='copy-btn' onclick='copyToClipboard(\"{uid}\")' title='Copy JSON'>&#128203;</button>\n"
+                        f"<button class='copy-btn'" f" onclick='copyToClipboard(\"{uid}\")'>" "&#128203;</button>\n"
                     )
                     h.append("</div>\n")
                     data_orig = _escape_html(ev.event).replace("'", "&#39;")
@@ -806,7 +808,9 @@ def _render_test(result: TestResult, index: int) -> str:
                 h.append("<strong>Stack Trace</strong>\n")
                 h.append("</div>\n")
                 h.append(
-                    f"<pre class='event-stacktrace-content' id='event-stacktrace-{uid}' style='display: block;'>{_escape_html(st_content)}</pre>\n"
+                    f"<pre class='event-stacktrace-content'"
+                    f" id='event-stacktrace-{uid}' style='display: block;'>"
+                    f"{_escape_html(st_content)}</pre>\n"
                 )
                 h.append("</div>\n")
             elif "\nTraceback (most recent call last):" in ev.event:
@@ -890,7 +894,8 @@ def _generate_html(
     # Toolbar
     h.append("<div class='toolbar'>\n")
     h.append(
-        "<input type='text' id='searchInput' class='search-input' placeholder='Search tests...' onkeyup='filterTests()'>\n"
+        "<input type='text' id='searchInput' class='search-input'"
+        " placeholder='Search tests...' onkeyup='filterTests()'>\n"
     )
     h.append("<select id='statusFilter' class='status-filter' onchange='filterTests()'>\n")
     h.append("<option value='all'>All</option>\n")
@@ -898,7 +903,8 @@ def _generate_html(
     h.append("<option value='FAILED'>Failed</option>\n")
     h.append("</select>\n")
     h.append(
-        "<select id='logLevelFilter' class='status-filter' onchange='filterLogLevel()' title='Minimum log level to display'>\n"
+        "<select id='logLevelFilter' class='status-filter'"
+        " onchange='filterLogLevel()' title='Minimum log level to display'>\n"
     )
     h.append("<option value='TRACE'>TRACE</option>\n")
     h.append("<option value='DEBUG' selected>DEBUG</option>\n")
@@ -921,9 +927,8 @@ def _generate_html(
             cls_failed = cls_total - cls_passed
             cls_status = "class-all-pass" if cls_failed == 0 else "class-has-fail"
             display_name = _format_class_name(class_name)
-            h.append(
-                f"<div class='test-class-group {cls_status}' data-class-status='{'FAILED' if cls_failed else 'PASSED'}'>\n"
-            )
+            status_value = "FAILED" if cls_failed else "PASSED"
+            h.append(f"<div class='test-class-group {cls_status}'" f" data-class-status='{status_value}'>\n")
             h.append(f"<h2 class='class-name' onclick='toggleClassGroup({cls_idx})'>\n")
             h.append(f"<span class='class-toggle-icon' id='class-icon-{cls_idx}'>&#9660;</span>\n")
             h.append(f"<span class='class-display-name'>{_escape_html(display_name)}</span>\n")
@@ -1024,10 +1029,15 @@ def _get_css() -> str:
   --amber: #d97706; --amber-bg: #fffbeb;
   --radius: 6px; --mono: {mono};
 }}
-@media (prefers-reduced-motion: reduce) {{ * {{ transition: none !important; animation: none !important; }} }}
+@media (prefers-reduced-motion: reduce) {{
+  * {{ transition: none !important; animation: none !important; }}
+}}
 
 * {{ margin:0; padding:0; box-sizing:border-box; }}
-body {{ font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif; background:var(--bg); color:var(--text); line-height:1.5; }}
+body {{
+  font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;
+  background:var(--bg); color:var(--text); line-height:1.5;
+}}
 
 /* --- Header --- */
 .header {{ background:#1a1d23; color:#fff; padding:24px 32px; }}
@@ -1037,7 +1047,10 @@ body {{ font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-ser
 .back-link {{ color:#93c5fd; text-decoration:none; font-size:13px; margin-right:auto; }}
 .back-link:hover {{ color:#fff; }}
 
-.progress-bar-container {{ display:flex; height:4px; margin-top:16px; border-radius:2px; overflow:hidden; background:#374151; }}
+.progress-bar-container {{
+  display:flex; height:4px; margin-top:16px;
+  border-radius:2px; overflow:hidden; background:#374151;
+}}
 .progress-bar {{ transition:width 0.4s ease; }}
 .pass-bar {{ background:var(--green); }}
 .fail-bar {{ background:var(--red); }}
@@ -1049,38 +1062,75 @@ body {{ font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-ser
 .stat-fail strong {{ color:#f87171; }}
 
 /* --- Toolbar --- */
-.toolbar {{ display:flex; gap:8px; padding:12px 32px; background:var(--surface); border-bottom:1px solid var(--border); position:sticky; top:0; z-index:10; }}
-.search-input {{ flex:1; padding:8px 12px; border:1px solid var(--border); border-radius:var(--radius); font-size:13px; font-family:inherit; background:var(--bg); }}
-.search-input:focus {{ outline:none; border-color:var(--blue); box-shadow:0 0 0 3px rgba(37,99,235,.12); }}
-.status-filter {{ padding:8px 12px; border:1px solid var(--border); border-radius:var(--radius); font-size:13px; cursor:pointer; background:var(--bg); font-family:inherit; }}
+.toolbar {{
+  display:flex; gap:8px; padding:12px 32px;
+  background:var(--surface); border-bottom:1px solid var(--border);
+  position:sticky; top:0; z-index:10;
+}}
+.search-input {{
+  flex:1; padding:8px 12px; border:1px solid var(--border);
+  border-radius:var(--radius); font-size:13px;
+  font-family:inherit; background:var(--bg);
+}}
+.search-input:focus {{
+  outline:none; border-color:var(--blue);
+  box-shadow:0 0 0 3px rgba(37,99,235,.12);
+}}
+.status-filter {{
+  padding:8px 12px; border:1px solid var(--border);
+  border-radius:var(--radius); font-size:13px;
+  cursor:pointer; background:var(--bg); font-family:inherit;
+}}
 .status-filter:focus-visible {{ outline:2px solid var(--blue); outline-offset:1px; }}
-.toolbar-btn {{ padding:8px 14px; border:1px solid var(--border); border-radius:var(--radius); font-size:12px; cursor:pointer; background:var(--surface); font-family:inherit; font-weight:500; color:var(--text-2); }}
+.toolbar-btn {{
+  padding:8px 14px; border:1px solid var(--border);
+  border-radius:var(--radius); font-size:12px; cursor:pointer;
+  background:var(--surface); font-family:inherit;
+  font-weight:500; color:var(--text-2);
+}}
 .toolbar-btn:hover {{ background:var(--bg); color:var(--text); }}
 .toolbar-btn:focus-visible {{ outline:2px solid var(--blue); outline-offset:1px; }}
 
 /* --- Tests container --- */
 .tests-container {{ padding:16px 32px 48px; }}
 .test-class-group {{ margin-bottom:32px; }}
-.class-name {{ font-size:14px; font-weight:700; color:var(--text-2); margin-bottom:0; padding:10px 12px; border-bottom:2px solid var(--border); cursor:pointer; display:flex; align-items:center; gap:10px; user-select:none; border-radius:var(--radius) var(--radius) 0 0; }}
+.class-name {{
+  font-size:14px; font-weight:700; color:var(--text-2);
+  margin-bottom:0; padding:10px 12px;
+  border-bottom:2px solid var(--border); cursor:pointer;
+  display:flex; align-items:center; gap:10px; user-select:none;
+  border-radius:var(--radius) var(--radius) 0 0;
+}}
 .class-name:hover {{ background:rgba(0,0,0,.02); }}
 .class-toggle-icon {{ font-size:10px; color:var(--text-3); transition:transform .2s; flex-shrink:0; }}
 .class-toggle-icon.collapsed {{ transform:rotate(-90deg); }}
 .class-display-name {{ flex:1; }}
 .class-count {{ font-weight:400; color:var(--text-3); font-size:12px; }}
-.class-fail-badge {{ font-size:10px; font-weight:600; background:var(--red-bg); color:var(--red); padding:1px 8px; border-radius:10px; border:1px solid var(--red-border); }}
+.class-fail-badge {{
+  font-size:10px; font-weight:600; background:var(--red-bg);
+  color:var(--red); padding:1px 8px;
+  border-radius:10px; border:1px solid var(--red-border);
+}}
 .class-all-pass {{ border-left:3px solid var(--green); }}
 .class-has-fail {{ border-left:3px solid var(--red); }}
 .class-tests {{ padding:4px 0 4px 24px; }}
 
 /* --- Test item --- */
-.test-item {{ background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); margin-bottom:6px; transition:box-shadow .15s; }}
+.test-item {{
+  background:var(--surface); border:1px solid var(--border);
+  border-radius:var(--radius); margin-bottom:6px;
+  transition:box-shadow .15s;
+}}
 .test-item:hover {{ box-shadow:0 1px 4px rgba(0,0,0,.06); }}
 .test-item.passed {{ border-left:3px solid var(--green); }}
 .test-item.failed {{ border-left:3px solid var(--red); background:var(--red-bg); }}
 .test-item.hidden {{ display:none !important; }}
 .test-item.highlight {{ background:#fef9c3 !important; border-color:var(--amber) !important; }}
 
-.test-header {{ padding:10px 16px; cursor:pointer; display:flex; align-items:center; gap:12px; user-select:none; }}
+.test-header {{
+  padding:10px 16px; cursor:pointer; display:flex;
+  align-items:center; gap:12px; user-select:none;
+}}
 .test-header:hover {{ background:rgba(0,0,0,.02); }}
 
 .status-dot {{ width:8px; height:8px; border-radius:50%; flex-shrink:0; }}
@@ -1088,12 +1138,21 @@ body {{ font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-ser
 .status-dot.fail {{ background:var(--red); }}
 
 .test-name-container {{ flex:1; min-width:0; }}
-.test-name {{ font-weight:600; font-size:13px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
-.test-method-name {{ font-size:11px; color:var(--text-3); font-family:var(--mono); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }}
+.test-name {{
+  font-weight:600; font-size:13px; color:var(--text);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}}
+.test-method-name {{
+  font-size:11px; color:var(--text-3); font-family:var(--mono);
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+}}
 
 .test-meta {{ display:flex; gap:8px; font-size:11px; color:var(--text-3); flex-shrink:0; }}
 .meta-item {{ font-family:var(--mono); }}
-.meta-events {{ background:var(--blue-bg); color:var(--blue); padding:1px 6px; border-radius:10px; font-weight:600; }}
+.meta-events {{
+  background:var(--blue-bg); color:var(--blue);
+  padding:1px 6px; border-radius:10px; font-weight:600;
+}}
 .meta-duration {{ }}
 .try-badge {{ background:var(--blue); color:#fff; padding:1px 6px; border-radius:10px; font-weight:600; }}
 
@@ -1101,76 +1160,163 @@ body {{ font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-ser
 .toggle-icon.open {{ transform:rotate(180deg); }}
 
 /* --- Test details --- */
-.test-details {{ border-top:1px solid var(--border); background:var(--surface); overflow:hidden; padding-left:24px; }}
+.test-details {{
+  border-top:1px solid var(--border); background:var(--surface);
+  overflow:hidden; padding-left:24px;
+}}
 .test-details.open {{ overflow:visible; }}
 
-.failure-message {{ padding:16px; background:var(--red-bg); border-left:3px solid var(--red); margin:12px 16px; border-radius:var(--radius); }}
-.failure-label {{ font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:var(--red); margin-bottom:6px; }}
-.failure-message pre {{ color:#991b1b; font-size:12px; line-height:1.6; white-space:pre-wrap; word-break:break-word; font-family:var(--mono); }}
+.failure-message {{
+  padding:16px; background:var(--red-bg);
+  border-left:3px solid var(--red); margin:12px 16px;
+  border-radius:var(--radius);
+}}
+.failure-label {{
+  font-size:11px; font-weight:700; text-transform:uppercase;
+  letter-spacing:.05em; color:var(--red); margin-bottom:6px;
+}}
+.failure-message pre {{
+  color:#991b1b; font-size:12px; line-height:1.6;
+  white-space:pre-wrap; word-break:break-word; font-family:var(--mono);
+}}
 .stacktrace-section {{ margin-top:12px; }}
-.stacktrace-toggle {{ cursor:pointer; padding:4px 0; color:var(--red); font-size:12px; display:flex; align-items:center; gap:6px; user-select:none; }}
+.stacktrace-toggle {{
+  cursor:pointer; padding:4px 0; color:var(--red); font-size:12px;
+  display:flex; align-items:center; gap:6px; user-select:none;
+}}
 .stacktrace-toggle:hover {{ opacity:.8; }}
 .stacktrace-icon {{ display:inline-block; transition:transform .2s; font-size:9px; }}
 .stacktrace-icon.open {{ transform:rotate(90deg); }}
-.stacktrace-content {{ margin-top:6px; color:#991b1b; font-size:11px; line-height:1.5; white-space:pre-wrap; word-break:break-word; font-family:var(--mono); max-height:400px; overflow-y:auto; background:#fff5f5; padding:10px; border-radius:var(--radius); border:1px solid var(--red-border); }}
+.stacktrace-content {{
+  margin-top:6px; color:#991b1b; font-size:11px; line-height:1.5;
+  white-space:pre-wrap; word-break:break-word; font-family:var(--mono);
+  max-height:400px; overflow-y:auto; background:#fff5f5;
+  padding:10px; border-radius:var(--radius); border:1px solid var(--red-border);
+}}
 
 /* --- Steps --- */
 .step {{ padding:8px 16px; border-bottom:1px solid #f3f4f6; }}
 .step:last-child {{ border-bottom:none; }}
 .step-passed .step-header {{ background:#f8fafb; }}
 .step-failed .step-header {{ background:var(--red-bg); }}
-.step-header {{ display:flex; align-items:center; gap:8px; padding:6px 10px; border-radius:var(--radius); cursor:pointer; user-select:none; font-size:13px; }}
+.step-header {{
+  display:flex; align-items:center; gap:8px; padding:6px 10px;
+  border-radius:var(--radius); cursor:pointer;
+  user-select:none; font-size:13px;
+}}
 .step-header:hover {{ filter:brightness(.97); }}
 .step-toggle-icon {{ font-size:9px; transition:transform .2s; color:var(--text-3); flex-shrink:0; }}
 .step-toggle-icon.open {{ transform:rotate(90deg); }}
 .step-name {{ font-weight:500; flex:1; color:var(--text); }}
-.step-event-count {{ font-size:10px; font-weight:600; background:var(--blue-bg); color:var(--blue); padding:1px 6px; border-radius:10px; flex-shrink:0; }}
+.step-event-count {{
+  font-size:10px; font-weight:600; background:var(--blue-bg);
+  color:var(--blue); padding:1px 6px; border-radius:10px; flex-shrink:0;
+}}
 .step-duration {{ font-size:11px; color:var(--text-3); font-family:var(--mono); flex-shrink:0; }}
 .step-time {{ font-size:11px; color:var(--text-3); font-family:var(--mono); flex-shrink:0; }}
 .step-events {{ padding:4px 0 4px 18px; }}
 .no-events {{ font-size:12px; color:var(--text-3); padding:6px 0; font-style:italic; }}
 
 /* --- Events --- */
-.event {{ padding:6px 10px; margin:3px 0; border-radius:4px; background:#f9fafb; border-left:3px solid #d1d5db; font-size:12px; line-height:1.6; }}
+.event {{
+  padding:6px 10px; margin:3px 0; border-radius:4px;
+  background:#f9fafb; border-left:3px solid #d1d5db;
+  font-size:12px; line-height:1.6;
+}}
 .event-info {{ border-left-color:var(--blue); background:var(--blue-bg); }}
 .event-error {{ border-left-color:var(--red); background:var(--red-bg); }}
 .event-warn {{ border-left-color:var(--amber); background:var(--amber-bg); }}
 .event-debug {{ border-left-color:#9ca3af; background:#f9fafb; }}
 .event-trace {{ border-left-color:#c4b5fd; background:#f5f3ff; }}
-.event-level {{ font-weight:700; font-size:10px; text-transform:uppercase; color:var(--text-3); margin-right:6px; letter-spacing:.04em; }}
-.event-source-location {{ font-size:10px; color:var(--text-3); font-family:var(--mono); margin-left:6px; padding:1px 5px; background:var(--border); border-radius:3px; }}
+.event-level {{
+  font-weight:700; font-size:10px; text-transform:uppercase;
+  color:var(--text-3); margin-right:6px; letter-spacing:.04em;
+}}
+.event-source-location {{
+  font-size:10px; color:var(--text-3); font-family:var(--mono);
+  margin-left:6px; padding:1px 5px;
+  background:var(--border); border-radius:3px;
+}}
 .event-text {{ color:var(--text); line-height:1.6; }}
 
 /* --- JSON / HTTP / cURL --- */
-.json-container {{ margin-top:6px; border:1px solid var(--blue-border); border-radius:var(--radius); overflow:hidden; }}
-.json-header {{ display:flex; justify-content:space-between; align-items:center; background:#dbeafe; padding:5px 10px; border-bottom:1px solid var(--blue-border); }}
-.json-label {{ font-size:10px; font-weight:700; text-transform:uppercase; color:#1e40af; letter-spacing:.05em; }}
-.copy-btn {{ background:var(--blue); color:#fff; border:none; padding:3px 8px; border-radius:4px; cursor:pointer; font-size:11px; font-family:inherit; }}
+.json-container {{
+  margin-top:6px; border:1px solid var(--blue-border);
+  border-radius:var(--radius); overflow:hidden;
+}}
+.json-header {{
+  display:flex; justify-content:space-between; align-items:center;
+  background:#dbeafe; padding:5px 10px;
+  border-bottom:1px solid var(--blue-border);
+}}
+.json-label {{
+  font-size:10px; font-weight:700; text-transform:uppercase;
+  color:#1e40af; letter-spacing:.05em;
+}}
+.copy-btn {{
+  background:var(--blue); color:#fff; border:none;
+  padding:3px 8px; border-radius:4px;
+  cursor:pointer; font-size:11px; font-family:inherit;
+}}
 .copy-btn:hover {{ background:#1d4ed8; }}
-.event-json {{ font-family:var(--mono); font-size:12px; color:#1e3a5f; background:var(--blue-bg); padding:10px; overflow-x:auto; margin:0; line-height:1.6; }}
+.event-json {{
+  font-family:var(--mono); font-size:12px; color:#1e3a5f;
+  background:var(--blue-bg); padding:10px;
+  overflow-x:auto; margin:0; line-height:1.6;
+}}
 .json-key {{ color:var(--blue); font-weight:600; }}
 .json-string {{ color:var(--blue); }}
 .json-number {{ color:var(--blue); }}
 .json-literal {{ color:#ea580c; font-weight:600; }}
 
-.curl-container {{ margin-top:8px; border:1px solid var(--border); border-radius:var(--radius); overflow:hidden; }}
-.curl-header {{ display:flex; justify-content:space-between; align-items:center; background:#f3f4f6; padding:5px 10px; border-bottom:1px solid var(--border); }}
-.curl-label {{ font-size:10px; font-weight:700; text-transform:uppercase; color:#374151; letter-spacing:.05em; }}
-.curl-command {{ font-family:var(--mono); font-size:11px; color:#1e293b; background:#f9fafb; padding:10px; overflow-x:auto; margin:0; line-height:1.6; white-space:pre-wrap; word-break:break-word; }}
+.curl-container {{
+  margin-top:8px; border:1px solid var(--border);
+  border-radius:var(--radius); overflow:hidden;
+}}
+.curl-header {{
+  display:flex; justify-content:space-between; align-items:center;
+  background:#f3f4f6; padding:5px 10px;
+  border-bottom:1px solid var(--border);
+}}
+.curl-label {{
+  font-size:10px; font-weight:700; text-transform:uppercase;
+  color:#374151; letter-spacing:.05em;
+}}
+.curl-command {{
+  font-family:var(--mono); font-size:11px; color:#1e293b;
+  background:#f9fafb; padding:10px; overflow-x:auto; margin:0;
+  line-height:1.6; white-space:pre-wrap; word-break:break-word;
+}}
 
 .http-event {{ margin-top:6px; border-radius:var(--radius); overflow:hidden; border:1px solid; }}
 .http-request {{ border-color:var(--blue-border); background:var(--blue-bg); }}
 .http-response {{ border-color:var(--green-border); background:var(--green-bg); }}
-.http-header {{ display:flex; align-items:center; gap:6px; padding:6px 10px; font-weight:600; font-size:12px; }}
+.http-header {{
+  display:flex; align-items:center; gap:6px;
+  padding:6px 10px; font-weight:600; font-size:12px;
+}}
 .http-icon {{ font-size:14px; }}
-.http-content {{ padding:10px; font-family:var(--mono); font-size:12px; color:#1e293b; white-space:pre-wrap; word-break:break-word; line-height:1.6; }}
+.http-content {{
+  padding:10px; font-family:var(--mono); font-size:12px;
+  color:#1e293b; white-space:pre-wrap;
+  word-break:break-word; line-height:1.6;
+}}
 
 .event-stacktrace-section {{ margin-top:8px; }}
-.event-stacktrace-toggle {{ cursor:pointer; padding:4px 0; color:var(--red); font-weight:600; display:flex; align-items:center; gap:5px; user-select:none; font-size:11px; }}
+.event-stacktrace-toggle {{
+  cursor:pointer; padding:4px 0; color:var(--red); font-weight:600;
+  display:flex; align-items:center; gap:5px;
+  user-select:none; font-size:11px;
+}}
 .event-stacktrace-toggle:hover {{ opacity:.8; }}
 .event-stacktrace-icon {{ display:inline-block; transition:transform .2s; font-size:9px; }}
 .event-stacktrace-icon.open {{ transform:rotate(90deg); }}
-.event-stacktrace-content {{ margin-top:4px; color:#7f1d1d; font-size:11px; line-height:1.5; white-space:pre; font-family:var(--mono); max-height:400px; overflow:auto; background:#fff5f5; padding:10px; border-radius:var(--radius); border:1px solid var(--red-border); }}
+.event-stacktrace-content {{
+  margin-top:4px; color:#7f1d1d; font-size:11px; line-height:1.5;
+  white-space:pre; font-family:var(--mono); max-height:400px;
+  overflow:auto; background:#fff5f5; padding:10px;
+  border-radius:var(--radius); border:1px solid var(--red-border);
+}}
 
 .no-results {{ text-align:center; padding:40px; color:var(--text-3); font-size:14px; }}
 """
@@ -1179,11 +1325,16 @@ body {{ font-family: -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-ser
 def _get_index_css() -> str:
     return (
         "* { margin: 0; padding: 0; box-sizing: border-box; }\n"
-        "body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif; background: #f0f2f5; padding: 20px; }\n"
-        ".header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 30px; border-radius: 12px; margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }\n"
+        "body { font-family: -apple-system, BlinkMacSystemFont,"
+        " 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;"
+        " background: #f0f2f5; padding: 20px; }\n"
+        ".header { background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);"
+        " color: white; padding: 30px; border-radius: 12px;"
+        " margin-bottom: 20px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }\n"
         ".header h1 { font-size: 32px; margin-bottom: 10px; font-weight: 600; letter-spacing: -0.5px; }\n"
         ".timestamp { opacity: 0.9; font-size: 14px; }\n"
-        ".runs-container { background: white; padding: 25px; border-radius: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }\n"
+        ".runs-container { background: white; padding: 25px; border-radius: 12px; "
+        "box-shadow: 0 2px 4px rgba(0,0,0,0.1); }\n"
         ".runs-container h2 { color: #667eea; font-size: 24px; margin-bottom: 20px; }\n"
         ".runs-list { display: flex; flex-direction: column; gap: 12px; }\n"
         ".run-item { border: 1px solid #e5e7eb; border-radius: 8px; padding: 15px; transition: all 0.2s; }\n"
@@ -1194,8 +1345,10 @@ def _get_index_css() -> str:
         ".run-link:hover { color: #667eea; }\n"
         ".run-icon { font-size: 20px; }\n"
         ".run-date { font-weight: 600; font-size: 16px; flex: 1; }\n"
-        ".try-number { background: #667eea; color: white; padding: 4px 10px; border-radius: 12px; font-size: 12px; font-weight: 600; margin-left: 8px; }\n"
-        ".current-badge { background: #10b981; color: white; padding: 4px 12px; border-radius: 12px; font-size: 12px; font-weight: 600; }\n"
+        ".try-number { background: #667eea; color: white; padding: 4px 10px; border-radius: 12px; "
+        "font-size: 12px; font-weight: 600; margin-left: 8px; }\n"
+        ".current-badge { background: #10b981; color: white; padding: 4px 12px; border-radius: 12px; "
+        "font-size: 12px; font-weight: 600; }\n"
         ".run-meta { font-size: 12px; color: #6b7280; }\n"
         ".run-file { font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', 'Courier New', monospace; }\n"
         ".no-runs { text-align: center; padding: 40px; color: #6b7280; font-size: 16px; }\n"

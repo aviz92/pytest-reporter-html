@@ -27,3 +27,4 @@ disable =
     W0717,      # too-many-try-statements
     C0199,      # docstring-first-line-empty
     C2701,      # import-private-name ; Imported private module
+    C0302,      # Too many lines in module - We have some long test files

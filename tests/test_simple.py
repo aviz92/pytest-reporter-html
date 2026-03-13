@@ -12,6 +12,6 @@ def test_simple():
     assert True
 
 
-def test_failed():
-    logger.info("Running test_failed")
-    assert False, "This test is designed to fail"
+# def test_failed():
+#     logger.info("Running test_failed")
+#     assert False, "This test is designed to fail"

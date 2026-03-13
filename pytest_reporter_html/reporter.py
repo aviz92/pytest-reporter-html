@@ -131,6 +131,22 @@ class TestReporter:
         self._step_counter = 0
         self._is_phase = False
 
+    @property
+    def report(self) -> JsonReport:
+        return self._report
+
+    @property
+    def current_step(self) -> ReportStep | None:
+        return self._current_step
+
+    @current_step.setter
+    def current_step(self, value: ReportStep | None) -> None:
+        self._current_step = value
+
+    @property
+    def step_counter(self) -> int:
+        return self._step_counter
+
     def begin_step(self, name: str) -> None:
         self._close_step()
         self._step_counter += 1

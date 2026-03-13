@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Iterator
 from pathlib import Path
-from unittest.mock import patch
 
 import pytest
 
@@ -17,27 +15,6 @@ from pytest_reporter_html.reporter import (
     _active_reporter,
     step,
 )
-
-# ---------------------------------------------------------------------------
-# Fixtures
-# ---------------------------------------------------------------------------
-
-
-@pytest.fixture
-def reporter(tmp_path: Path) -> TestReporter:
-    return TestReporter(
-        test_name="test_example",
-        class_name="tests.test_module",
-        output_dir=str(tmp_path),
-    )
-
-
-@pytest.fixture
-def fixed_timestamp() -> Iterator[None]:
-    """Pin the timestamp to a known value for deterministic file names."""
-    with patch.dict("os.environ", {"REPORT_TIMESTAMP": "1000000000000"}):
-        yield
-
 
 # ---------------------------------------------------------------------------
 # ReportEvent
@@ -158,12 +135,12 @@ class TestTestReporter:
         reporter.begin_phase("Setup")
         reporter.add_event(ReportEvent(startTime=1, level="INFO", event="log"))
         reporter.end_phase()
-        assert len(reporter._report.steps) == 1, f"Expected 1 step after end_phase, got {len(reporter._report.steps)}"
+        assert len(reporter.report.steps) == 1, f"Expected 1 step after end_phase, got {len(reporter.report.steps)}"
 
     def test_empty_passing_setup_teardown_phases_are_dropped(self, reporter: TestReporter) -> None:
         reporter.begin_phase("Setup")
         reporter.end_phase()
-        assert len(reporter._report.steps) == 0, "Empty passing Setup phase should be dropped"
+        assert len(reporter.report.steps) == 0, "Empty passing Setup phase should be dropped"
 
     def test_begin_step_increments_counter(self, reporter: TestReporter) -> None:
         reporter.begin_phase("Setup")
@@ -171,32 +148,32 @@ class TestTestReporter:
         reporter.begin_phase("test_example")
         reporter.begin_step("step one")
         assert (
-            reporter._step_counter == 1
-        ), f"Step counter should be 1 after first begin_step, got {reporter._step_counter}"
+            reporter.step_counter == 1
+        ), f"Step counter should be 1 after first begin_step, got {reporter.step_counter}"
         reporter.begin_step("step two")
         assert (
-            reporter._step_counter == 2
-        ), f"Step counter should be 2 after second begin_step, got {reporter._step_counter}"
+            reporter.step_counter == 2
+        ), f"Step counter should be 2 after second begin_step, got {reporter.step_counter}"
 
     def test_step_name_formatted_with_counter(self, reporter: TestReporter) -> None:
         reporter.begin_phase("test_example")
         reporter.begin_step("my step")
-        assert reporter._current_step is not None, "Current step should not be None"
+        assert reporter.current_step is not None, "Current step should not be None"
         assert (
-            reporter._current_step.name == "Step 01: my step"
-        ), f"Expected 'Step 01: my step', got {reporter._current_step.name!r}"
+            reporter.current_step.name == "Step 01: my step"
+        ), f"Expected 'Step 01: my step', got {reporter.current_step.name!r}"
 
     def test_end_step_closes_current_step(self, reporter: TestReporter) -> None:
         reporter.begin_phase("test_example")
         reporter.begin_step("login")
         reporter.end_step()
-        assert reporter._current_step is None, "current_step should be None after end_step"
+        assert reporter.current_step is None, "current_step should be None after end_step"
 
     def test_end_step_with_failure_marks_step_failed(self, reporter: TestReporter) -> None:
         reporter.begin_phase("test_example")
         reporter.begin_step("login")
         reporter.end_step(failure_message="boom", stack_trace="trace")
-        last = reporter._report.steps[-1]
+        last = reporter.report.steps[-1]
         assert last.status == "FAILED", f"Step status should be FAILED, got {last.status!r}"
         assert last.failureMessage == "boom", f"failureMessage mismatch: {last.failureMessage!r}"
 
@@ -205,14 +182,14 @@ class TestTestReporter:
         reporter.begin_step("step")
         event = ReportEvent(startTime=1, level="DEBUG", event="msg")
         reporter.add_event(event)
-        assert len(reporter._current_step.events) == 1, f"Expected 1 event, got {len(reporter._current_step.events)}"
+        assert len(reporter.current_step.events) == 1, f"Expected 1 event, got {len(reporter.current_step.events)}"
 
     def test_add_event_without_current_step_creates_orphan_step(self, reporter: TestReporter) -> None:
-        reporter._current_step = None
+        # reporter.current_step is already None from the fixture
         event = ReportEvent(startTime=100, level="INFO", event="orphan")
         reporter.add_event(event)
-        assert len(reporter._report.steps) == 1, "Expected orphan step to be created"
-        assert reporter._report.steps[0].events[0].event == "orphan", "Orphan event not stored"
+        assert len(reporter.report.steps) == 1, "Expected orphan step to be created"
+        assert reporter.report.steps[0].events[0].event == "orphan", "Orphan event not stored"
 
     def test_finalize_writes_json_file(self, reporter: TestReporter, fixed_timestamp: None, tmp_path: Path) -> None:
         reporter.begin_phase("test_example")
@@ -265,7 +242,7 @@ class TestStep:
         finally:
             _active_reporter.reset(token)
 
-        step_names = [s.name for s in reporter._report.steps]
+        step_names = [s.name for s in reporter.report.steps]
         assert any("my step" in n for n in step_names), f"Expected 'my step' in steps, got {step_names}"
 
     def test_sync_context_manager_marks_failed_on_exception(self, reporter: TestReporter) -> None:
@@ -278,7 +255,7 @@ class TestStep:
         finally:
             _active_reporter.reset(token)
 
-        failed = [s for s in reporter._report.steps if s.status == "FAILED"]
+        failed = [s for s in reporter.report.steps if s.status == "FAILED"]
         assert len(failed) == 1, f"Expected 1 failed step, got {failed}"
         assert "intentional error" in (
             failed[0].failureMessage or ""
@@ -298,7 +275,7 @@ class TestStep:
             _active_reporter.reset(token)
 
         assert result == "done", f"Decorator should return the function result, got {result!r}"
-        step_names = [s.name for s in reporter._report.steps]
+        step_names = [s.name for s in reporter.report.steps]
         assert any("decorated step" in n for n in step_names), f"Expected 'decorated step' in steps, got {step_names}"
 
     @pytest.mark.asyncio
@@ -312,7 +289,7 @@ class TestStep:
         finally:
             _active_reporter.reset(token)
 
-        step_names = [s.name for s in reporter._report.steps]
+        step_names = [s.name for s in reporter.report.steps]
         assert any("async step" in n for n in step_names), f"Expected 'async step' in steps, got {step_names}"
 
     @pytest.mark.asyncio

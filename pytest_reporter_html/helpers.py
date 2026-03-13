@@ -27,10 +27,7 @@ def _worse(a: str, b: str) -> str:
 def _extract_failure(report: pytest.TestReport) -> tuple[str, str]:
     """Extract (failure_message, stack_trace) from a failed TestReport."""
     longrepr = report.longrepr
-    if hasattr(longrepr, "reprcrash"):
-        msg = str(longrepr.reprcrash.message)
-    else:
-        msg = str(longrepr)
+    msg = str(longrepr.reprcrash.message) if hasattr(longrepr, "reprcrash") else str(longrepr)
     return msg, str(longrepr)
 
 

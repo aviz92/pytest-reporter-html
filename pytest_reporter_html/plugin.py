@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import os
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from typing import Any
 
 import pytest
@@ -79,7 +79,7 @@ def pytest_runtest_setup(item: pytest.Item) -> None:
 
 
 @pytest.hookimpl(hookwrapper=True)
-def pytest_runtest_makereport(item: Function) -> Generator[None, Any, None]:
+def pytest_runtest_makereport(item: Function) -> Generator[None, Any, None]:  # pylint: disable=R1260, R0912
     outcome = yield
     if (reporter := item.stash.get(_reporter_key, None)) is None:
         return
@@ -99,13 +99,12 @@ def pytest_runtest_makereport(item: Function) -> Generator[None, Any, None]:
             reporter.end_phase()
             item.stash[_status_key] = TestStatus.SKIPPED.name
 
-    elif report.when == "call":
-        if report.failed:
-            failure = _extract_failure(report)
-            reporter.end_phase(*failure)
-            if (new := _worse(item.stash[_status_key], TestStatus.FAILED.name)) != item.stash[_status_key]:
-                item.stash[_status_key] = new
-                item.stash[_failure_key] = failure
+    elif report.when == "call" and report.failed:
+        failure = _extract_failure(report)
+        reporter.end_phase(*failure)
+        if (new := _worse(item.stash[_status_key], TestStatus.FAILED.name)) != item.stash[_status_key]:
+            item.stash[_status_key] = new
+            item.stash[_failure_key] = failure
         elif report.skipped:
             reporter.end_phase()
             item.stash[_status_key] = _worse(item.stash[_status_key], TestStatus.SKIPPED.name)
@@ -153,7 +152,7 @@ def pytest_sessionfinish(session: pytest.Session) -> None:  # noqa: ARG001
 
 
 @pytest.fixture
-def report_test_name(request: pytest.FixtureRequest) -> callable[[str], None]:
+def report_test_name(request: pytest.FixtureRequest) -> Callable[[str], None]:
     """Override the test name used in the report at runtime."""
 
     def _set(name: str) -> None:

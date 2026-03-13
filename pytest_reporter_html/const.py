@@ -28,6 +28,6 @@ class TestStatus(IntEnum):
 
 @dataclass
 class PluginConfig:
-    output_dir: str = "build/test-reports"
+    output_dir: str = "logs/test-reports"
     title: str = "Test Report"
     generate_html: bool = False

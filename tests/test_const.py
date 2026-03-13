@@ -44,8 +44,8 @@ class TestPluginConfig:
     def test_default_output_dir(self) -> None:
         cfg = PluginConfig()
         assert (
-            cfg.output_dir == "build/test-reports"
-        ), f"Default output_dir should be 'build/test-reports', got {cfg.output_dir!r}"
+            cfg.output_dir == "logs/test-reports"
+        ), f"Default output_dir should be 'logs/test-reports', got {cfg.output_dir!r}"
 
     def test_default_title(self) -> None:
         cfg = PluginConfig()

@@ -400,7 +400,7 @@ def _generate_html(
     h += [
         "<div class='toolbar'>\n",
         "<input type='text' id='searchInput' class='search-input'"
-        " placeholder='Search tests...' onkeyup='filterTests()'>\n",
+        " placeholder='Search tests... (* wildcard, ? single char, OR, &quot;phrase&quot;)' onkeyup='filterTests()'>\n",
         "<select id='statusFilter' class='status-filter' onchange='filterTests()'>\n",
         "<option value='all'>All</option>\n",
         "<option value='PASSED'>Passed</option>\n",
@@ -806,24 +806,69 @@ function filterLogLevel() {
     badge.textContent = vis;
   });
 }
+function globToRegex(pattern) {
+  /* Convert a glob/wildcard pattern to a RegExp.
+     Supports: * (any chars), ? (single char), "phrase" (literal quoted phrase).
+     Multiple space-separated tokens are ANDed together.
+     Tokens separated by OR (case-insensitive) are ORed. */
+  var raw = pattern.trim();
+  if (!raw) return null;
+  // Tokenise: respect double-quoted strings
+  var tokens = [];
+  var re = /"([^"]*)"|(OR)|[^\\s]+/gi;
+  var m;
+  while ((m = re.exec(raw)) !== null) {
+    if (m[1] !== undefined) tokens.push({type:'literal', val:m[1].toLowerCase()});
+    else if (m[2]) tokens.push({type:'OR'});
+    else tokens.push({type:'glob', val:m[0].toLowerCase()});
+  }
+  // Build groups of AND-terms separated by OR
+  var groups = [[]];
+  tokens.forEach(function(t) {
+    if (t.type === 'OR') groups.push([]);
+    else groups[groups.length-1].push(t);
+  });
+  function escLiteral(s) { return s.replace(/[.+^${}()|[\\]\\\\]/g,'\\\\$&'); }
+  function termToRegex(t) {
+    if (t.type === 'literal') return new RegExp(escLiteral(t.val), 'i');
+    // glob: * → .*, ? → .
+    var p = t.val.split('').map(function(c){
+      if (c==='*') return '.*';
+      if (c==='?') return '.';
+      return escLiteral(c);
+    }).join('');
+    // If pattern has no wildcard, do substring match
+    if (!t.val.includes('*') && !t.val.includes('?')) p = '.*' + p + '.*';
+    return new RegExp('^' + p + '$', 'i');
+  }
+  return {groups: groups.map(function(g){ return g.map(termToRegex); })};
+}
+function matchesQuery(text, parsed) {
+  if (!parsed) return true;
+  return parsed.groups.some(function(andTerms) {
+    return andTerms.every(function(rx) { return rx.test(text); });
+  });
+}
 function filterTests() {
-  var term = (document.getElementById('searchInput').value || '').toLowerCase();
+  var raw = (document.getElementById('searchInput').value || '');
+  var parsed = globToRegex(raw);
   var status = document.getElementById('statusFilter').value;
   var visible = 0;
   document.querySelectorAll('.test-item').forEach(function(item) {
-    var name = (item.querySelector('.test-name') && item.querySelector('.test-name').textContent || '').toLowerCase();
-    var method = (item.querySelector('.test-method-name') && item.querySelector('.test-method-name').textContent || '').toLowerCase();
-    var matchSearch = !term || name.includes(term) || method.includes(term);
+    var name = (item.querySelector('.test-name') && item.querySelector('.test-name').textContent || '');
+    var method = (item.querySelector('.test-method-name') && item.querySelector('.test-method-name').textContent || '');
+    var haystack = name + ' ' + method;
+    var matchSearch = !parsed || matchesQuery(haystack, parsed);
     var matchStatus = status === 'all' || item.dataset.status === status;
     if (matchSearch && matchStatus) {
       item.classList.remove('hidden'); visible++;
-      item.classList.toggle('highlight', !!term && (name.includes(term) || method.includes(term)));
+      item.classList.toggle('highlight', !!parsed);
     } else {
       item.classList.add('hidden'); item.classList.remove('highlight');
     }
   });
   var nr = document.getElementById('no-results');
-  if (visible === 0 && (term || status !== 'all')) {
+  if (visible === 0 && (parsed || status !== 'all')) {
     if (!nr) {
       var m = document.createElement('div'); m.id = 'no-results'; m.className = 'no-results';
       m.textContent = 'No tests match your criteria.';

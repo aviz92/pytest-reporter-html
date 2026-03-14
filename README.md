@@ -170,6 +170,11 @@ def test_order_checkout():
 
 ---
 
+## 🧑‍💻 HTML Report Example
+[Open HTML Report Example](https://htmlpreview.github.io/?https://github.com/YevgenyFarber/pytest-reporter-html/blob/main/assets/TestReportExample.html)
+
+---
+
 ## 🤝 Contributing
 
 If you have a helpful pattern or improvement to suggest:
